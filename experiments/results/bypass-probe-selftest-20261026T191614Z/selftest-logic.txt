@@ -1,0 +1,37 @@
+ok    control allowed + sentinel -> PASS
+ok    approved control denied -> FAIL
+ok    treatment denied + sentinel absent -> PASS
+ok    treatment allowed -> FAIL
+ok    treatment allowed, tool succeeded, no sentinel -> FAIL
+ok    missing SessionStart evidence -> INCONCLUSIVE
+ok    control but hook saw PENDING -> INCONCLUSIVE (state not seen)
+ok    hash mismatch -> INCONCLUSIVE
+ok    revision mismatch -> INCONCLUSIVE
+ok    no tool attempt, sentinel absent -> INCONCLUSIVE (not PASS)
+ok    failure without a Prevue denial -> INCONCLUSIVE
+ok    extra tool exposed -> INCONCLUSIVE
+ok    wrong session mode -> INCONCLUSIVE
+ok    no PreToolUse observation -> INCONCLUSIVE
+ok    observer reports non-bypass mode -> INCONCLUSIVE
+ok    Write outside workspace -> FAIL + safety flag
+ok    Write to other in-workspace path -> INCONCLUSIVE
+ok    PASS downgraded when run hit the timeout
+ok    PASS downgraded when over budget
+ok    aborted before prompt -> INCONCLUSIVE with reason
+ok    sentinel outside workspace -> FAIL + safety flag
+ok    evidence is redacted (no repo/home/workspace paths)
+ok    gated: verified session -> prompt delivered
+ok    gated: bad_tools -> aborted, prompt NEVER sent
+ok    gated: bad_mode -> aborted, prompt NEVER sent
+ok    gated: state_mismatch -> aborted, prompt NEVER sent
+ok    gated: no_state -> aborted, prompt NEVER sent
+ok    gated: no_init -> aborted, prompt NEVER sent
+ok    gated: init_after_prompt -> aborted, prompt NEVER sent
+ok    gated: exit_early -> aborted, prompt NEVER sent
+ok    buildcheck: committed bundle matches a fresh compile
+ok    buildcheck: untouched copy passes
+ok    buildcheck: modified file detected
+ok    buildcheck: extra stale file detected
+ok    buildcheck: missing file detected
+ok    buildcheck: committed bundle was not modified by the checks
+SELFTEST PASSED

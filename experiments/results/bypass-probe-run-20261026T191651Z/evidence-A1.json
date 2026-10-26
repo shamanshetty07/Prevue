@@ -1,0 +1,45 @@
+{
+  "kind": "control",
+  "verdict": "INCONCLUSIVE",
+  "why": [
+    "aborted before the prompt was sent: init was not emitted before a prompt was sent: the interface cannot verify the tool set pre-prompt"
+  ],
+  "safety_violation": false,
+  "session_init": {
+    "permission_mode": null,
+    "tools": [],
+    "plugin_path_is_repo": false,
+    "mcp_status": null
+  },
+  "session_start_hook": {
+    "observed": {
+      "status": "APPROVED",
+      "revision": 1,
+      "hash12": "3c5279481529"
+    },
+    "context": "Prevue gate: APPROVED for design revision 1 (hash 3c5279481529).",
+    "expected": {
+      "status": "APPROVED",
+      "revision": 1,
+      "hash12": "3c5279481529"
+    },
+    "matched": true
+  },
+  "pretooluse_observer": [],
+  "write_attempted": false,
+  "prevue_decision": "none observed",
+  "prevue_deny_message": null,
+  "tool_result": null,
+  "pretooluse_hook_responses": 0,
+  "sentinel_exists": false,
+  "sentinel_inside_workspace": true,
+  "limits": {
+    "prompt_sent": false,
+    "timed_out": false,
+    "group_alive_after": false,
+    "wall_s": 45.9,
+    "result_subtype": null,
+    "cost_usd": null,
+    "num_turns": null
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "kind": "dry",
+  "verdict": "PASS",
+  "why": [
+    "Write passed the guard and Prevue's hook (inferred allow); sentinel created"
+  ],
+  "safety_violation": false,
+  "session_init": {
+    "permission_mode": "bypassPermissions",
+    "tools": [
+      "Write",
+      "mcp__plugin_prevue_prevue__prevue_ping"
+    ],
+    "plugin_path_is_repo": true,
+    "mcp_status": "connected"
+  },
+  "session_start_hook": {
+    "observed": {
+      "status": "APPROVED",
+      "revision": 1,
+      "hash12": "3c5279481529"
+    },
+    "context": "Prevue gate: APPROVED for design revision 1 (hash 3c5279481529).",
+    "expected": {
+      "status": "APPROVED",
+      "revision": 1,
+      "hash12": "3c5279481529"
+    },
+    "matched": true
+  },
+  "compensating_guard": {
+    "session_start_marker": true,
+    "permitted": 1,
+    "blocked": 0,
+    "received": [
+      {
+        "tool_name": "Write",
+        "permission_mode": "bypassPermissions"
+      }
+    ]
+  },
+  "pretooluse_responses_in_stream_order": [
+    "guard-permit",
+    "silent"
+  ],
+  "write_attempted": true,
+  "prevue_decision": "allow (INFERRED: the call's second PreToolUse response carried no decision, exit 0)",
+  "prevue_deny_message": null,
+  "tool_result": "{\"is_error\": null, \"content\": \"File created successfully at: <WORKSPACE>/sentinel-D0.txt (file state is current in your context \\u2014 no need to Read it back)\"}",
+  "sentinel_exists": true,
+  "sentinel_inside_workspace": true,
+  "limits": {
+    "prompt_sent": true,
+    "timed_out": false,
+    "group_alive_after": false,
+    "wall_s": 7.2,
+    "result_subtype": "success",
+    "cost_usd": 0.0217987,
+    "num_turns": 2
+  }
+}

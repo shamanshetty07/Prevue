@@ -4,6 +4,8 @@
 #   experiments/bypass-probe.sh selftest   no Claude session: timeout/process-tree test, guard hook, verdict logic on synthetic
 #                                          evidence, gated-runner control flow against a stub, stale-build guard
 #   experiments/bypass-probe.sh dry        one harmless APPROVED Write (checks setup, tools, state location)
+#   experiments/bypass-probe.sh a2a        ONLY the unapproved treatment A2a (fresh PENDING state, one session, no other arm)
+#   experiments/bypass-probe.sh a2b        ONLY the unapproved treatment A2b (independent of a2a and of any control run)
 #   experiments/bypass-probe.sh run        A1 control (approved) + A2a, A2b treatments (unapproved; skipped if A1 is not PASS)
 #
 # Safety properties (each is enforced by code in this script or bypass_probe_tools.py, not assumed):
@@ -33,7 +35,7 @@
 # --settings hooks load was seen live (earlier probe); that onFailure is honoured there, and that stderr is captured
 # on exit-0 hooks, is unconfirmed until the first live run (the verdict falls back to INCONCLUSIVE).
 set -euo pipefail
-MODE="${1:?usage: bypass-probe.sh selftest|dry|run}"
+MODE="${1:?usage: bypass-probe.sh selftest|dry|a2a|a2b|run}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 TOOLS="python3 -I $ROOT/experiments/bypass_probe_tools.py"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -115,6 +117,8 @@ EOF2
 
 case "$MODE" in
   dry) arm D0 dry ;;
+  a2a) arm A2a treatment ;;          # each mode launches exactly one session; nothing chains
+  a2b) arm A2b treatment ;;
   run) arm A1 control
        if grep -q '"verdict": "PASS"' "$RES/evidence-A1.json"; then arm A2a treatment; arm A2b treatment
        else echo "A1 control did not PASS: treatment arms skipped (a denial would not be attributable to the design state)"; fi ;;

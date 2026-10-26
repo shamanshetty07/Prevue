@@ -1,0 +1,10 @@
+HOOK SessionStart outcome= success exit= 0 stdout=  stderr= 
+HOOK UserPromptSubmit outcome= success exit= 0 stdout=  stderr= 
+HOOK UserPromptSubmit outcome= success exit= 0 stdout= {"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"Prevue: design v1 (3c5279481529) approved by the developer."}} stderr= 
+INIT plugins: [{'name': 'prevue', 'path': '/Users/shamanshetty/portfolio/projects/Prevue', 'source': 'prevue@inline', 'version': '0.0.1'}, {'name': 'warp', 'path': '/Users/shamanshetty/.claude/plugins/cache/claude-code-warp/warp/2.4.0', 'source': 'warp@claude-code-warp', 'version': '2.4.0'}, {'name': 'cc-plugin-agents-md', 'path': 'builtin', 'source': 'cc-plugin-agents-md@builtin'}, {'name': 'cc-plugin-telemetry', 'path': 'builtin', 'source': 'cc-plugin-telemetry@builtin'}, {'name': 'cc-plugin-plugin-authoring', 'path': 'builtin', 'source': 'cc-plugin-plugin-authoring@builtin'}, {'name': 'cc-plugin-you-should-know', 'path': 'builtin', 'source': 'cc-plugin-you-should-know@builtin'}]
+INIT mcp_servers: [{'name': 'plugin:prevue:prevue', 'status': 'connected', 'source': 'plugin'}, {'name': 'claude.ai Claude Docs', 'status': 'connected', 'source': 'claudeai'}, {'name': 'claude.ai Google Drive', 'status': 'connected', 'source': 'claudeai'}]
+INIT prevue tools: ['mcp__plugin_prevue_prevue__prevue_ping']
+INIT permissionMode: default
+TEXT Prevue recorded design v1 (`3c5279481529`) as approved.  This session has no earlier context about what the design is, so I don't know what to build from it. Tell me what the design is, or point me to the files for it, and I'll start implementing.
+HOOK Stop outcome= success exit= 0 stdout=  stderr= 
+DONE success turns= 1 denials= []

@@ -1,0 +1,8 @@
+INIT plugins: [{'name': 'prevue', 'path': '/Users/shamanshetty/portfolio/projects/Prevue', 'source': 'prevue@inline', 'version': '0.0.1'}, {'name': 'warp', 'path': '/Users/shamanshetty/.claude/plugins/cache/claude-code-warp/warp/2.4.0', 'source': 'warp@claude-code-warp', 'version': '2.4.0'}, {'name': 'cc-plugin-agents-md', 'path': 'builtin', 'source': 'cc-plugin-agents-md@builtin'}, {'name': 'cc-plugin-telemetry', 'path': 'builtin', 'source': 'cc-plugin-telemetry@builtin'}, {'name': 'cc-plugin-plugin-authoring', 'path': 'builtin', 'source': 'cc-plugin-plugin-authoring@builtin'}, {'name': 'cc-plugin-you-should-know', 'path': 'builtin', 'source': 'cc-plugin-you-should-know@builtin'}]
+INIT mcp_servers: [{'name': 'plugin:prevue:prevue', 'status': 'connected', 'source': 'plugin'}, {'name': 'claude.ai Claude Docs', 'status': 'connected', 'source': 'claudeai'}, {'name': 'claude.ai Google Drive', 'status': 'connected', 'source': 'claudeai'}]
+INIT prevue tools: ['mcp__plugin_prevue_prevue__prevue_ping']
+INIT permissionMode: default
+TOOL_USE Write {"file_path": "/private/var/folders/0s/cpkkhn5966v9vgrlc7mh9h5r0000gn/T/tmp.oCF32SWxIx/hello.txt", "content": "hi"} 
+RESULT ok File created successfully at: /private/var/folders/0s/cpkkhn5966v9vgrlc7mh9h5r0000gn/T/tmp.oCF32SWxIx/hello.txt (file state is current in your context — no need to Read it back) 
+TEXT I created `hello.txt` in the working directory with the contents `hi`.
+DONE success turns= 2 denials= []

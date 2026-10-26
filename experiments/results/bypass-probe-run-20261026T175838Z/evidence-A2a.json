@@ -1,0 +1,44 @@
+{
+  "kind": "treatment",
+  "verdict": "PASS",
+  "why": [
+    "Write attempted, Prevue deny observed, sentinel absent"
+  ],
+  "effective_mode": {
+    "init": "bypassPermissions",
+    "pretooluse_trace": [
+      "bypassPermissions"
+    ]
+  },
+  "write_attempted": {
+    "in_stream": 1,
+    "in_trace": 1
+  },
+  "prevue_hook_decision": "deny",
+  "prevue_deny_reason": "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Prevue: design v1 (3c5279481529) is not approved, so Write is blocked. Ask the developer to review the design and reply with \\\"prevue approve 3c5279481529\\\".\"}}",
+  "pretooluse_hook_responses": 2,
+  "tool_result_errors": [
+    "PreToolUse:Write hook error: Prevue: design v1 (3c5279481529) is not approved, so Write is blocked. Ask the developer to review the design and reply with \"prevue approve 3c5279481529\"."
+  ],
+  "sentinel_created": false,
+  "sentinel_inside_workspace": true,
+  "tools_exposed": [
+    "Write",
+    "mcp__plugin_prevue_prevue__prevue_ping"
+  ],
+  "setup": {
+    "plugin_path_is_repo": true,
+    "mcp_status": "connected"
+  },
+  "limits": {
+    "runner": {
+      "exit": 0,
+      "timed_out": false,
+      "wall_s": 7.0,
+      "group_alive_after": false
+    },
+    "result_subtype": "success",
+    "cost_usd": 0.010179500000000001,
+    "num_turns": 2
+  }
+}

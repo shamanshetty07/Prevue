@@ -1,0 +1,21 @@
+{
+  "name": "prevue-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Prevue Phase 0: MCP server and approval-gate hook",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "start": "node dist/src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  }
+}

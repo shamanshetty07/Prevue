@@ -1,0 +1,7 @@
+{
+  "name": "prevue",
+  "displayName": "Prevue",
+  "version": "0.0.1",
+  "description": "Preview and approve AI-generated UI designs before Claude implements them (Phase 0 proof of concept)",
+  "license": "MIT"
+}

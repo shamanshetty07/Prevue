@@ -1,0 +1,2 @@
+{"session_id":"ea55bdf7-f8a0-424d-b5f2-ec2107824c13","transcript_path":"~/.claude/projects/-private-var-folders-0s-cpkkhn5966v9vgrlc7mh9h5r0000gn-T-prevue-bypass-OfzWGz/ea55bdf7-f8a0-424d-b5f2-ec2107824c13.jsonl","cwd":"<WORKSPACE>","prompt_id":"ebda1c5b-bf17-414a-9bc3-b6ab7050332b","permission_mode":"bypassPermissions","effort":{"level":"medium"},"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"<WORKSPACE>/sentinel-A1.txt","content":"probe"},"tool_use_id":"toolu_01RjTm2ZYG1pfSxfy4KHF8x6"}
+

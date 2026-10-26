@@ -1,0 +1,42 @@
+{
+  "kind": "control",
+  "verdict": "PASS",
+  "why": [
+    "Write attempted and allowed; sentinel created"
+  ],
+  "effective_mode": {
+    "init": "bypassPermissions",
+    "pretooluse_trace": [
+      "bypassPermissions"
+    ]
+  },
+  "write_attempted": {
+    "in_stream": 1,
+    "in_trace": 1
+  },
+  "prevue_hook_decision": "no-deny (allow)",
+  "prevue_deny_reason": "",
+  "pretooluse_hook_responses": 2,
+  "tool_result_errors": [],
+  "sentinel_created": true,
+  "sentinel_inside_workspace": true,
+  "tools_exposed": [
+    "Write",
+    "mcp__plugin_prevue_prevue__prevue_ping"
+  ],
+  "setup": {
+    "plugin_path_is_repo": true,
+    "mcp_status": "connected"
+  },
+  "limits": {
+    "runner": {
+      "exit": 0,
+      "timed_out": false,
+      "wall_s": 9.0,
+      "group_alive_after": false
+    },
+    "result_subtype": "success",
+    "cost_usd": 0.015799999999999998,
+    "num_turns": 2
+  }
+}

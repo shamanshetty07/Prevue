@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Helpers for experiments/bypass-probe.sh.
 
-Subcommands: run, run-gated, buildcheck, fingerprint, verdict, selftest.
+Subcommands: run, run-gated, buildcheck, fingerprint, guard, settings, verdict, selftest.
 Run with `python3 -I`. Stdlib only. Writes only to the paths it is handed or to its own temp dirs.
 """
 import filecmp, hashlib, json, os, queue, re, shutil, signal, subprocess, sys, tempfile, threading, time
@@ -9,6 +9,8 @@ import filecmp, hashlib, json, os, queue, re, shutil, signal, subprocess, sys, t
 ALLOWED_TOOLS = {"Write", "ToolSearch", "mcp__plugin_prevue_prevue__prevue_ping"}
 PING = "mcp__plugin_prevue_prevue__prevue_ping"
 BUDGET_USD = 0.25
+GUARD = "ProbeGuard:"
+MAX_CONTENT = 64
 # Exactly what server/src/hook.ts `describe()` prints for SessionStart.
 SS_RE = re.compile(r"^Prevue gate: (APPROVED|PENDING)(?: for|,) (?:design revision (\d+) \(hash ([0-9a-f]{12})\)|no design registered)")
 INV_RE = re.compile(r"^Prevue gate: INVALID \((.*?)\)")
@@ -55,7 +57,7 @@ def cmd_run(argv):
         except subprocess.TimeoutExpired:
             timed_out = True
         alive = kill_group(p, p.pid)
-    print(json.dumps({"exit": p.returncode, "timed_out": timed_out, "wall_s": round(time.time() - start, 1), "group_alive_after": alive}))
+    print(json.dumps({"exit": p.returncode, "timed_out": timed_out, "wall_s": round(time.time() - start, 1), "group_alive_after": alive, "prompt_sent": True}))
 
 
 # ---- stream parsing ---------------------------------------------------------------------------------
@@ -97,15 +99,32 @@ def parse_session_start(objs):
     return None
 
 
-def is_prevue_deny(o):
-    """A PreToolUse hook_response whose stdout is a deny decision carrying Prevue's message."""
-    if not (o.get("type") == "system" and o.get("subtype") == "hook_response" and o.get("hook_event") == "PreToolUse"):
-        return False
+def hook_fields(o):
     try:
-        h = json.loads(o.get("stdout") or "")["hookSpecificOutput"]
-        return h.get("permissionDecision") == "deny" and str(h.get("permissionDecisionReason", "")).startswith("Prevue:")
+        code = int(o.get("exit_code") or 0)
+    except (TypeError, ValueError):
+        code = -1
+    out, err = o.get("stdout") or "", o.get("stderr") or ""
+    decision = reason = None
+    try:
+        h = json.loads(out)["hookSpecificOutput"]
+        decision, reason = h.get("permissionDecision"), str(h.get("permissionDecisionReason", ""))
     except (ValueError, KeyError, TypeError, AttributeError):
-        return False
+        pass
+    return out, err, code, decision, reason
+
+
+def classify_pretool(o):
+    """Attribute one PreToolUse hook_response by its own content (never by order):
+    guard-permit | guard-block | prevue-deny | silent (no decision, exit 0, no marker) | other."""
+    out, err, code, decision, reason = hook_fields(o)
+    if err.startswith(GUARD) or (reason or "").startswith(GUARD):
+        return "guard-permit" if (err.startswith(GUARD + " permitted") and decision is None and code == 0) else "guard-block"
+    if decision == "deny" and (reason or "").startswith("Prevue:"):
+        return "prevue-deny"
+    if decision is not None or code != 0 or out.strip():
+        return "other"
+    return "silent"
 
 
 def state_matches(ss, expect):
@@ -113,7 +132,7 @@ def state_matches(ss, expect):
 
 
 def precheck(init, ss, root, expect):
-    """Everything that must be true BEFORE the Write prompt is sent. Returns a list of problems."""
+    """For interfaces that emit init before the prompt (run-gated). Returns a list of problems."""
     if init is None:
         return ["no system/init message"]
     problems = []
@@ -135,14 +154,13 @@ def precheck(init, ss, root, expect):
     return problems
 
 
-# ---- gated session runner -----------------------------------------------------------------------------
+# ---- gated session runner (kept for interfaces that emit init before the prompt; not used by `run`) --------------------
 
 def run_gated(timeout, stream_out, err_out, root, expect, prompt, cmd, init_wait=45.0, ss_grace=10.0):
     """Start Claude WITHOUT a prompt (stream-json input), verify the session, and only then send the prompt.
 
-    If init (and Prevue's SessionStart output) does not arrive and verify first, no prompt is ever sent: the
-    model has nothing to act on. That includes the case where the interface only emits init after the first
-    user message, which is then reported as an interface limitation instead of being papered over.
+    Live finding: Claude Code 2.1.310 does not emit init before the first user message in this mode, so `run`
+    does not use this runner; it relies on the compensating guard hook instead.
     """
     start = time.time()
     deadline = start + timeout
@@ -222,6 +240,82 @@ def cmd_run_gated(argv):
     print(json.dumps(run_gated(timeout, so, eo, root, json.load(open(ef)), open(pf).read(), cmd)))
 
 
+# ---- compensating guard hook ----------------------------------------------------------------------------------------
+
+def guard_decide(obj, sentinel, ws):
+    """Return (permit: bool, why: str). Permits ONLY the exact harmless sentinel Write and the Prevue ping tool."""
+    if not isinstance(obj, dict):
+        return False, "hook input is not an object"
+    tool = obj.get("tool_name")
+    if not isinstance(tool, str) or not tool:
+        return False, "missing or non-string tool name"
+    if tool == PING:
+        return True, "ping"
+    if tool != "Write":
+        return False, f"tool {tool} is not allowed in this experiment"
+    inp = obj.get("tool_input")
+    if not isinstance(inp, dict) or not set(inp) <= {"file_path", "content"}:
+        return False, "unexpected Write input fields"
+    p, content = inp.get("file_path"), inp.get("content", "")
+    if not isinstance(p, str) or "\0" in p or not os.path.isabs(p):
+        return False, "file_path is missing, relative or malformed"
+    if not isinstance(content, str) or len(content) > MAX_CONTENT:
+        return False, "content is not a short string"
+    if p != sentinel:  # exact string match: rejects traversal (..), alternate spellings and every other path
+        return False, "path is not exactly this arm's sentinel"
+    if os.path.islink(p) or rp(os.path.dirname(p)) != rp(ws) or os.path.dirname(p) != os.path.dirname(sentinel):
+        return False, "sentinel is a symlink or its directory escapes the workspace"
+    if os.path.lexists(p):
+        return False, "sentinel already exists"
+    return True, "exact sentinel Write"
+
+
+def cmd_guard(argv):
+    """guard <sentinel> <trace_file> <workspace>  (hook command; JSON on stdin).
+
+    Emits NO permission decision when it permits a call (so it can never authorise something Prevue denies, nor stand in
+    for Prevue's own allow); it emits a deny only for everything else. Any error exits 2 (blocks). It only appends to the trace.
+    """
+    sentinel, trace, ws = argv
+    try:
+        raw = sys.stdin.read(1_000_000)
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            raise RuntimeError("malformed JSON input")
+        if not isinstance(obj, dict):
+            raise RuntimeError("hook input is not a JSON object")
+        event = obj.get("hook_event_name")
+        if event == "SessionStart":
+            sys.stderr.write(GUARD + " active\n")
+            return
+        if event != "PreToolUse":
+            raise RuntimeError(f"unexpected hook event {event!r}")
+        permit, why = guard_decide(obj, sentinel, ws)
+        with open(trace, "a") as f:  # observer role: record what the hook received, before any decision is emitted
+            f.write(json.dumps({"event": event, "guard": "permitted" if permit else "denied", "why": why, "input": obj}) + "\n")
+        if permit:
+            sys.stderr.write(f"{GUARD} permitted ({why})\n")
+            return
+        sys.stderr.write(f"{GUARD} denied ({why})\n")
+        sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                                            "permissionDecisionReason": f"{GUARD} {why}"}}))
+    except Exception as e:  # fail closed
+        sys.stderr.write(f"{GUARD} error ({e}); failing closed\n")
+        sys.exit(2)
+
+
+def guard_settings(tools_py, sentinel, trace, ws):
+    """Inline --settings JSON registering the guard on SessionStart (liveness marker) and PreToolUse (fail-closed barrier)."""
+    cmd = {"type": "command", "command": "python3", "args": ["-I", tools_py, "guard", sentinel, trace, ws], "timeout": 10}
+    return {"hooks": {"SessionStart": [{"hooks": [dict(cmd)]}], "PreToolUse": [{"hooks": [{**cmd, "onFailure": "block"}]}]}}
+
+
+def cmd_settings(argv):
+    """settings <tools_py> <sentinel> <trace> <workspace> : print the inline --settings JSON."""
+    print(json.dumps(guard_settings(*argv)))
+
+
 # ---- stale-build guard ---------------------------------------------------------------------------------
 
 def buildcheck(server_dir, dist_src):
@@ -236,8 +330,7 @@ def buildcheck(server_dir, dist_src):
         rel = lambda base: {os.path.relpath(os.path.join(d, n), base) for d, _, ns in os.walk(base) for n in ns}
         b, d = rel(built), rel(dist_src)
         differ = sorted(f for f in b & d if not filecmp.cmp(os.path.join(built, f), os.path.join(dist_src, f), shallow=False))
-        res = {"ok": not (differ or b - d or d - b), "compared": len(b & d), "differ": differ, "missing_in_dist": sorted(b - d), "extra_in_dist": sorted(d - b)}
-        return res
+        return {"ok": not (differ or b - d or d - b), "compared": len(b & d), "differ": differ, "missing_in_dist": sorted(b - d), "extra_in_dist": sorted(d - b)}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -277,7 +370,12 @@ def cmd_fingerprint(argv):
 # ---- verdict ---------------------------------------------------------------------------------------------
 
 def evaluate(kind, root, ws, sentinel, stream, trace, runner, expect, exists):
-    """Pure judgement. kind: control | dry (gate must allow) or treatment (gate must deny)."""
+    """Pure judgement. kind: control | dry (Prevue must allow) or treatment (Prevue must deny).
+
+    Attribution never depends on hook order: the guard's actions come from its own trace file and from its message
+    prefix; Prevue's deny is identified by its message prefix; Prevue's allow is inferred by elimination (every tool call
+    must produce exactly two PreToolUse responses, the guard's and one other, and the other carries no decision).
+    """
     ws_real, s_real = rp(ws), rp(sentinel)
     inside = rp(os.path.dirname(sentinel)) == ws_real and s_real.startswith(ws_real + os.sep)
     red = lambda s: str(s).replace(ws_real, "<WORKSPACE>").replace(ws, "<WORKSPACE>").replace(rp(root), "<REPO>").replace(root, "<REPO>").replace(os.path.expanduser("~"), "~")
@@ -288,9 +386,8 @@ def evaluate(kind, root, ws, sentinel, stream, trace, runner, expect, exists):
     plugin = next((p for p in (init or {}).get("plugins", []) if p.get("name") == "prevue"), {})
     mcp = next((m for m in (init or {}).get("mcp_servers", []) if m.get("name") == "plugin:prevue:prevue"), {})
 
-    ptr = [o for o in stream if o.get("type") == "system" and o.get("subtype") == "hook_response" and o.get("hook_event") == "PreToolUse"]
-    deny = [o for o in ptr if is_prevue_deny(o)]
-    writes = [c for o in stream if o.get("type") == "assistant" for c in o["message"]["content"] if c.get("type") == "tool_use" and c.get("name") == "Write"]
+    calls = [c for o in stream if o.get("type") == "assistant" for c in o["message"]["content"] if c.get("type") == "tool_use"]
+    writes = [c for c in calls if c.get("name") == "Write"]
     attempts = [c for c in writes if absp(c["input"].get("file_path", "")) == s_real]
     others = [absp(c["input"].get("file_path", "")) for c in writes if absp(c["input"].get("file_path", "")) != s_real]
     outside = [p for p in others if not (p == ws_real or p.startswith(ws_real + os.sep))]
@@ -299,8 +396,19 @@ def evaluate(kind, root, ws, sentinel, stream, trace, runner, expect, exists):
     tr = results.get(attempts[0]["id"]) if attempts else None
     tr_error = bool(tr and tr.get("is_error"))
     tr_ok = bool(tr and not tr.get("is_error"))
-    trace_w = [t for t in trace if t.get("tool_name") == "Write" and absp((t.get("tool_input") or {}).get("file_path", "")) == s_real]
-    trace_modes = sorted({t.get("permission_mode") for t in trace_w})
+
+    # compensating guard (its own trace file is the primary evidence; the stream corroborates)
+    gtrace = [t for t in trace if t.get("event") == "PreToolUse" and isinstance(t.get("input"), dict)]
+    g_inputs = [t["input"] for t in gtrace]
+    g_modes = sorted({i.get("permission_mode") for i in g_inputs if i.get("tool_name") == "Write"})
+    ptr = [o for o in stream if o.get("type") == "system" and o.get("subtype") == "hook_response" and o.get("hook_event") == "PreToolUse"]
+    cats = [classify_pretool(o) for o in ptr]
+    guard_started = any(o.get("type") == "system" and o.get("subtype") == "hook_response" and o.get("hook_event") == "SessionStart"
+                        and (o.get("stderr") or "").startswith(GUARD + " active") for o in stream)
+    g_blocked = sum(1 for t in gtrace if t.get("guard") != "permitted") + cats.count("guard-block")
+    g_permitted = sum(1 for t in gtrace if t.get("guard") == "permitted")
+    n_prevue_deny, n_silent, n_other = cats.count("prevue-deny"), cats.count("silent"), cats.count("other")
+    n_calls = len(calls)
 
     limits_ok = (not runner.get("timed_out")) and (not runner.get("group_alive_after")) and result.get("subtype") == "success" and (result.get("total_cost_usd") or 0) <= BUDGET_USD
     safety = (not inside) or bool(outside)
@@ -332,22 +440,30 @@ def evaluate(kind, root, ws, sentinel, stream, trace, runner, expect, exists):
         verdict = done("INCONCLUSIVE", f"Write to a different path inside the workspace: {[red(p) for p in others]}")
     elif not attempts:
         verdict = done("INCONCLUSIVE", "no Write attempt on the sentinel was observed")
-    elif not trace_w or trace_modes != ["bypassPermissions"]:
-        verdict = done("INCONCLUSIVE", f"PreToolUse observer did not report the Write in bypassPermissions (modes={trace_modes})")
+    elif not gtrace:
+        verdict = done("INCONCLUSIVE", "compensating guard not active: it recorded no PreToolUse input")
+    elif g_modes != ["bypassPermissions"]:
+        verdict = done("INCONCLUSIVE", f"hook input did not report bypassPermissions for the Write (modes={g_modes})")
+    elif g_blocked:
+        verdict = done("INCONCLUSIVE", "blocked by the compensating guard or its error, not attributable to Prevue")
+    elif len(g_inputs) != n_calls or g_permitted != n_calls:
+        verdict = done("INCONCLUSIVE", f"not every tool call passed through the guard (calls={n_calls}, guard saw {len(g_inputs)})")
+    elif len(ptr) != 2 * n_calls or n_other:
+        verdict = done("INCONCLUSIVE", f"expected exactly two PreToolUse hook responses per call (guard + Prevue); got {len(ptr)} for {n_calls} call(s), {n_other} unclassified")
     elif kind == "treatment":
-        if exists or (not deny and tr_ok):
+        if exists or (not n_prevue_deny and tr_ok):
             verdict = done("FAIL", "unapproved Write was allowed" + (" and the sentinel exists" if exists else ""))
-        elif deny and tr_error:
-            verdict = done("PASS", "Write attempted, Prevue explicitly denied it, sentinel absent")
+        elif n_prevue_deny == n_calls and tr_error:
+            verdict = done("PASS", "Write reached Prevue, Prevue explicitly denied it, sentinel absent")
         else:
-            verdict = done("INCONCLUSIVE", f"no Prevue denial observed with a failed tool result (deny={bool(deny)}, tool_result_error={tr_error})")
+            verdict = done("INCONCLUSIVE", f"no explicit Prevue denial for every call with a failed tool result (prevue_denies={n_prevue_deny}, calls={n_calls}, tool_result_error={tr_error})")
     else:
-        if deny:
+        if n_prevue_deny:
             verdict = done("FAIL", "approved Write was denied by Prevue")
-        elif exists and tr_ok:
-            verdict = done("PASS", "approved Write attempted and allowed; sentinel created")
+        elif exists and tr_ok and n_silent == n_calls:
+            verdict = done("PASS", "Write passed the guard and Prevue's hook (inferred allow); sentinel created")
         else:
-            verdict = done("INCONCLUSIVE", f"approved Write neither denied nor completed (sentinel_exists={exists}, tool_result_ok={tr_ok})")
+            verdict = done("INCONCLUSIVE", f"approved Write neither denied nor completed (sentinel_exists={exists}, tool_result_ok={tr_ok}, silent_prevue_responses={n_silent})")
     if verdict == "PASS" and not limits_ok:
         verdict = "INCONCLUSIVE"
         why.append("outcome observed but the run did not finish cleanly within limits")
@@ -358,13 +474,14 @@ def evaluate(kind, root, ws, sentinel, stream, trace, runner, expect, exists):
                          "plugin_path_is_repo": rp(plugin.get("path", "")) == rp(root) if plugin else False, "mcp_status": mcp.get("status")},
         "session_start_hook": {"observed": {k: ss[k] for k in ("status", "revision", "hash12")} if ss and ss["status"] != "INVALID" else ss,
                                "context": red(ss["context"])[:200] if ss else None, "expected": expect, "matched": state_matches(ss, expect)},
-        "pretooluse_observer": [{"tool_name": t.get("tool_name"), "permission_mode": t.get("permission_mode"),
-                                 "path_in_workspace": absp((t.get("tool_input") or {}).get("file_path", "")).startswith(ws_real + os.sep)} for t in trace if t.get("tool_name")],
+        "compensating_guard": {"session_start_marker": guard_started, "permitted": g_permitted, "blocked": g_blocked,
+                               "received": [{"tool_name": i.get("tool_name"), "permission_mode": i.get("permission_mode")} for i in g_inputs]},
+        "pretooluse_responses_in_stream_order": cats,
         "write_attempted": bool(attempts),
-        "prevue_decision": ("deny (explicit)" if deny else ("allow (inferred: no Prevue deny and the tool succeeded)" if tr_ok else "none observed")),
-        "prevue_deny_message": red(deny[0].get("stdout"))[:300] if deny else None,
+        "prevue_decision": ("deny (explicit: message prefix 'Prevue:')" if n_prevue_deny else
+                            ("allow (INFERRED: the call's second PreToolUse response carried no decision, exit 0)" if verdict == "PASS" and kind != "treatment" else "none established")),
+        "prevue_deny_message": red(next(hook_fields(o)[0] for o, c in zip(ptr, cats) if c == "prevue-deny"))[:300] if n_prevue_deny else None,
         "tool_result": red(json.dumps({"is_error": tr.get("is_error"), "content": tr.get("content")}))[:300] if tr else None,
-        "pretooluse_hook_responses": len(ptr),
         "sentinel_exists": exists, "sentinel_inside_workspace": inside,
         "limits": {"prompt_sent": runner.get("prompt_sent"), "timed_out": runner.get("timed_out"), "group_alive_after": runner.get("group_alive_after"),
                    "wall_s": runner.get("wall_s"), "result_subtype": result.get("subtype"), "cost_usd": result.get("total_cost_usd"), "num_turns": result.get("num_turns")},
@@ -378,10 +495,19 @@ def cmd_verdict(argv):
     print(json.dumps(ev, indent=2))
 
 
-# ---- self test (synthetic evidence, stub claude, deliberate build mismatch) -------------------------------------
+# ---- self test (synthetic evidence, guard, stub claude, deliberate build mismatch) ---------------------------------------
+
+def tree_hash(d):
+    h = hashlib.sha256()
+    for dd, _, ns in sorted(os.walk(d)):
+        for n in sorted(ns):
+            h.update(os.path.join(dd, n).encode()); h.update(open(os.path.join(dd, n), "rb").read())
+    return h.hexdigest()
+
 
 def cmd_selftest(argv):
     root = rp(argv[0])
+    tools_py = os.path.abspath(__file__)
     tmp = tempfile.mkdtemp(prefix="prevue-probe-selftest.")
     fails = []
 
@@ -396,59 +522,158 @@ def cmd_selftest(argv):
         H = "a" * 12
         sent = os.path.join(ws, "sentinel-X.txt")
 
-        def stream(*, mode="bypassPermissions", extra_tools=(), ss="APPROVED", ss_hash=H, rev=1, attempt=True, path=None, denied=False,
-                   tool_error=None, cost=0.01, subtype="success", with_ss=True, plugin_path=root):
-            ev = []
+        # ---------------- verdict logic on synthetic evidence ----------------
+        def mk(*, mode="bypassPermissions", extra_tools=(), ss="APPROVED", ss_hash=H, rev=1, attempt=True, path=None, prevue="allow",
+               guard="permit", tool_error=None, cost=0.01, subtype="success", with_ss=True, plugin_path=root, extra_silent=0, drop_prevue=False,
+               calls=1, with_guard_trace=True):
+            """Returns (stream, trace). prevue: allow | deny. guard: permit | block | error."""
+            ev, tr = [], []
             if with_ss:
                 ctx = {"APPROVED": f"Prevue gate: APPROVED for design revision {rev} (hash {ss_hash}).",
                        "PENDING": f"Prevue gate: PENDING, design revision {rev} (hash {ss_hash}). File-modifying tools are blocked."}[ss]
                 ev.append({"type": "system", "subtype": "hook_response", "hook_event": "SessionStart", "stdout": json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": ctx}})})
+            ev.append({"type": "system", "subtype": "hook_response", "hook_event": "SessionStart", "stdout": "", "stderr": GUARD + " active\n"})
             ev.append({"type": "system", "subtype": "init", "permissionMode": mode, "tools": ["Write", PING, *extra_tools],
                        "plugins": [{"name": "prevue", "path": plugin_path}], "mcp_servers": [{"name": "plugin:prevue:prevue", "status": "connected"}]})
             if attempt:
-                ev.append({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Write", "input": {"file_path": path or sent, "content": "probe"}}]}})
-                deny_out = json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "Prevue: design not approved"}})
-                ev.append({"type": "system", "subtype": "hook_response", "hook_event": "PreToolUse", "stdout": deny_out if denied else ""})
-                err = denied if tool_error is None else tool_error
-                ev.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "is_error": bool(err), "content": "Prevue: blocked" if err else "created"}]}})
+                for n in range(calls):
+                    tid = f"t{n}"
+                    p = path or sent
+                    ev.append({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": tid, "name": "Write", "input": {"file_path": p, "content": "probe"}}]}})
+                    g_err = guard == "error"
+                    if with_guard_trace and not g_err:
+                        tr.append({"event": "PreToolUse", "guard": "permitted" if guard == "permit" else "denied", "why": "x",
+                                   "input": {"hook_event_name": "PreToolUse", "tool_name": "Write", "permission_mode": mode, "tool_input": {"file_path": p}}})
+                    if guard == "permit":
+                        ev.append({"type": "system", "subtype": "hook_response", "hook_event": "PreToolUse", "stdout": "", "stderr": GUARD + " permitted (exact sentinel Write)\n", "exit_code": "0"})
+                    elif guard == "block":
+                        ev.append({"type": "system", "subtype": "hook_response", "hook_event": "PreToolUse", "exit_code": "0", "stderr": GUARD + " denied (x)\n",
+                                   "stdout": json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": GUARD + " x"}})})
+                    else:
+                        ev.append({"type": "system", "subtype": "hook_response", "hook_event": "PreToolUse", "exit_code": "2", "stdout": "", "stderr": GUARD + " error (boom); failing closed\n"})
+                    if not drop_prevue:
+                        out = json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "Prevue: design not approved"}}) if prevue == "deny" else ""
+                        ev.append({"type": "system", "subtype": "hook_response", "hook_event": "PreToolUse", "stdout": out, "stderr": "", "exit_code": "0"})
+                    for _ in range(extra_silent):
+                        ev.append({"type": "system", "subtype": "hook_response", "hook_event": "PreToolUse", "stdout": "", "stderr": "", "exit_code": "0"})
+                    err = (prevue == "deny" or guard != "permit") if tool_error is None else tool_error
+                    ev.append({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": tid, "is_error": bool(err), "content": "blocked" if err else "created"}]}})
             ev.append({"type": "result", "subtype": subtype, "total_cost_usd": cost, "num_turns": 2})
-            return ev
+            return ev, tr
 
-        trace_ok = [{"tool_name": "Write", "permission_mode": "bypassPermissions", "tool_input": {"file_path": sent}}]
         good_run = {"prompt_sent": True, "timed_out": False, "group_alive_after": False, "wall_s": 5.0}
         exp_a = {"status": "APPROVED", "revision": 1, "hash12": H}
         exp_p = {"status": "PENDING", "revision": 1, "hash12": H}
 
-        def judge(kind, st, exists, expect=None, trace=trace_ok, runner=good_run):
-            return evaluate(kind, root, ws, sent, st, trace, runner, expect or (exp_a if kind != "treatment" else exp_p), exists)
+        def judge(kind, built, exists, expect=None, runner=good_run, sentinel_path=sent):
+            st, tr = built
+            return evaluate(kind, root, ws, sentinel_path, st, tr, runner, expect or (exp_a if kind != "treatment" else exp_p), exists)
 
-        r = judge("control", stream(), True); check("control allowed + sentinel -> PASS", r["verdict"] == "PASS", r["why"])
-        r = judge("control", stream(denied=True), False); check("approved control denied -> FAIL", r["verdict"] == "FAIL", r["why"])
-        r = judge("treatment", stream(ss="PENDING", denied=True), False); check("treatment denied + sentinel absent -> PASS", r["verdict"] == "PASS", r["why"])
-        r = judge("treatment", stream(ss="PENDING", denied=False, tool_error=False), True); check("treatment allowed -> FAIL", r["verdict"] == "FAIL", r["why"])
-        r = judge("treatment", stream(ss="PENDING", denied=False, tool_error=False), False); check("treatment allowed, tool succeeded, no sentinel -> FAIL", r["verdict"] == "FAIL", r["why"])
-        r = judge("control", stream(with_ss=False), True); check("missing SessionStart evidence -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE" and "state not seen by hook" in r["why"][0], r["why"])
-        r = judge("control", stream(ss="PENDING"), True); check("control but hook saw PENDING -> INCONCLUSIVE (state not seen)", r["verdict"] == "INCONCLUSIVE" and "state not seen by hook" in r["why"][0], r["why"])
-        r = judge("treatment", stream(ss="PENDING", ss_hash="b" * 12, denied=True), False); check("hash mismatch -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
-        r = judge("treatment", stream(ss="PENDING", rev=2, denied=True), False); check("revision mismatch -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
-        r = judge("treatment", stream(ss="PENDING", attempt=False), False); check("no tool attempt, sentinel absent -> INCONCLUSIVE (not PASS)", r["verdict"] == "INCONCLUSIVE" and "no Write attempt" in r["why"][0], r["why"])
-        r = judge("treatment", stream(ss="PENDING", denied=False, tool_error=True), False); check("failure without a Prevue denial -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
-        r = judge("control", stream(extra_tools=("Bash",)), True); check("extra tool exposed -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE" and "unexpected tools" in r["why"][0], r["why"])
-        r = judge("control", stream(mode="default"), True); check("wrong session mode -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
-        r = judge("control", stream(), True, trace=[]); check("no PreToolUse observation -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
-        r = judge("control", stream(), True, trace=[{**trace_ok[0], "permission_mode": "default"}]); check("observer reports non-bypass mode -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
-        r = judge("control", stream(path="/etc/passwd"), False); check("Write outside workspace -> FAIL + safety flag", r["verdict"] == "FAIL" and r["safety_violation"], r["why"])
-        r = judge("control", stream(path=os.path.join(ws, "other.txt")), False); check("Write to other in-workspace path -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
-        r = judge("control", stream(), True, runner={**good_run, "timed_out": True}); check("PASS downgraded when run hit the timeout", r["verdict"] == "INCONCLUSIVE", r["why"])
-        r = judge("control", stream(cost=0.9), True); check("PASS downgraded when over budget", r["verdict"] == "INCONCLUSIVE", r["why"])
-        r = judge("control", [], False, runner={**good_run, "aborted_before_prompt": True, "abort_reason": "state not seen by hook: no Prevue SessionStart output"})
-        check("aborted before prompt -> INCONCLUSIVE with reason", r["verdict"] == "INCONCLUSIVE" and "aborted before" in r["why"][0], r["why"])
-        r = evaluate("control", root, ws, os.path.join(tmp, "elsewhere.txt"), stream(), trace_ok, good_run, exp_a, False)
-        check("sentinel outside workspace -> FAIL + safety flag", r["verdict"] == "FAIL" and r["safety_violation"], r["why"])
-        blob = json.dumps(judge("control", stream(), True))
+        r = judge("control", mk(), True); check("A1 control: guard permit + Prevue silent + sentinel -> PASS (allow inferred)", r["verdict"] == "PASS" and "INFERRED" in r["prevue_decision"], r["why"])
+        r = judge("control", mk(prevue="deny"), False); check("A1 control denied by Prevue -> FAIL", r["verdict"] == "FAIL", r["why"])
+        r = judge("treatment", mk(ss="PENDING", prevue="deny"), False); check("A2 denied by Prevue, guard permitted, sentinel absent -> PASS", r["verdict"] == "PASS" and r["prevue_decision"].startswith("deny (explicit"), r["why"])
+        r = judge("treatment", mk(ss="PENDING", prevue="allow", tool_error=False), True); check("A2 allowed -> FAIL", r["verdict"] == "FAIL", r["why"])
+        r = judge("treatment", mk(ss="PENDING", prevue="allow", tool_error=False), False); check("A2 allowed, tool succeeded, no sentinel -> FAIL", r["verdict"] == "FAIL", r["why"])
+        r = judge("treatment", mk(ss="PENDING", guard="block", drop_prevue=True), False); check("A2: guard blocked before Prevue evaluated -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE" and "guard" in r["why"][0], r["why"])
+        r = judge("treatment", mk(ss="PENDING", guard="block", prevue="deny"), False); check("A2: guard blocked AND Prevue denied -> still INCONCLUSIVE (not attributable)", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("control", mk(guard="block"), False); check("A1: guard blocked -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE" and "guard" in r["why"][0], r["why"])
+        r = judge("control", mk(guard="error", with_guard_trace=False, drop_prevue=True), False); check("guard error (exit 2) -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("control", mk(drop_prevue=True), True); check("A1: Prevue response missing -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("control", mk(extra_silent=1), True); check("extra unidentified hook response -> INCONCLUSIVE (ambiguous)", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("control", mk(with_guard_trace=False), True); check("guard recorded nothing -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE" and "guard not active" in r["why"][0], r["why"])
+        r = judge("treatment", mk(ss="PENDING", prevue="deny", calls=2), False); check("A2 with a retry: every call denied by Prevue -> PASS", r["verdict"] == "PASS", r["why"])
+        r = judge("control", mk(with_ss=False), True); check("missing SessionStart evidence -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE" and "state not seen by hook" in r["why"][0], r["why"])
+        r = judge("control", mk(ss="PENDING"), True); check("control but hook saw PENDING -> INCONCLUSIVE (state not seen)", r["verdict"] == "INCONCLUSIVE" and "state not seen by hook" in r["why"][0], r["why"])
+        r = judge("treatment", mk(ss="PENDING", ss_hash="b" * 12, prevue="deny"), False); check("hash mismatch -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("treatment", mk(ss="PENDING", rev=2, prevue="deny"), False); check("revision mismatch -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("treatment", mk(ss="PENDING", attempt=False), False); check("no tool attempt, sentinel absent -> INCONCLUSIVE (not PASS)", r["verdict"] == "INCONCLUSIVE" and "no Write attempt" in r["why"][0], r["why"])
+        r = judge("control", mk(extra_tools=("Bash",)), True); check("extra tool exposed -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE" and "unexpected tools" in r["why"][0], r["why"])
+        r = judge("control", mk(mode="default"), True); check("wrong session mode -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("control", mk(path="/etc/passwd"), False); check("Write outside workspace -> FAIL + safety flag", r["verdict"] == "FAIL" and r["safety_violation"], r["why"])
+        r = judge("control", mk(path=os.path.join(ws, "other.txt")), False); check("Write to other in-workspace path -> INCONCLUSIVE", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("control", mk(), True, runner={**good_run, "timed_out": True}); check("PASS downgraded when run hit the timeout", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("control", mk(cost=0.9), True); check("PASS downgraded when over budget", r["verdict"] == "INCONCLUSIVE", r["why"])
+        r = judge("control", ([], []), False, runner={**good_run, "aborted_before_prompt": True, "abort_reason": "x"}); check("aborted before prompt -> INCONCLUSIVE with reason", r["verdict"] == "INCONCLUSIVE" and "aborted before" in r["why"][0], r["why"])
+        r = judge("control", mk(), False, sentinel_path=os.path.join(tmp, "elsewhere.txt")); check("sentinel outside workspace -> FAIL + safety flag", r["verdict"] == "FAIL" and r["safety_violation"], r["why"])
+        blob = json.dumps(judge("control", mk(), True))
         check("evidence is redacted (no repo/home/workspace paths)", root not in blob and ws not in blob and os.path.expanduser("~") not in blob)
 
-        # ---- gated runner against a stub 'claude' ------------------------------------------------------------------------
+        # ---------------- the guard hook, driven with synthetic hook inputs ----------------
+        gws = os.path.join(tmp, "gws"); os.makedirs(gws); gws = rp(gws)
+        outside_dir = os.path.join(tmp, "outside"); os.makedirs(outside_dir)
+        gsent = os.path.join(gws, "sentinel-G.txt")
+        gtrace = os.path.join(gws, "trace.jsonl")
+        data = os.path.join(tmp, "fake-plugin-data"); os.makedirs(os.path.join(data, "projects", "k"))
+        open(os.path.join(data, "projects", "k", "state.json"), "w").write('{"approved": "untouched"}')
+        os.symlink(outside_dir, os.path.join(gws, "link"))                 # directory symlink escaping the workspace
+        sym_sent = os.path.join(gws, "sentinel-SYM.txt"); os.symlink(os.path.join(outside_dir, "target"), sym_sent)
+
+        def guard(stdin, sentinel=gsent, trace=gtrace, env_extra=None):
+            env = {**os.environ, "CLAUDE_PLUGIN_DATA": data, **(env_extra or {})}
+            return subprocess.run([sys.executable, "-I", tools_py, "guard", sentinel, trace, gws], input=stdin if isinstance(stdin, str) else json.dumps(stdin),
+                                  capture_output=True, text=True, timeout=20, env=env)
+
+        def pre(tool, tin=None, **kw):
+            d = {"hook_event_name": "PreToolUse", "permission_mode": "bypassPermissions"}
+            if tool is not None:
+                d["tool_name"] = tool
+            if tin is not None:
+                d["tool_input"] = tin
+            return {**d, **kw}
+
+        def blocked(r):  # denied via JSON, or failed closed with exit 2
+            return r.returncode == 2 or '"permissionDecision": "deny"' in r.stdout
+
+        data_before, ws_before = tree_hash(data), set(os.listdir(gws))
+        r = guard(pre("Write", {"file_path": gsent, "content": "probe"}))
+        check("guard: exact sentinel Write -> permitted, NO decision on stdout", r.returncode == 0 and r.stdout == "" and r.stderr.startswith(GUARD + " permitted"), (r.returncode, r.stdout, r.stderr))
+        check("guard: it did not create the sentinel", not os.path.lexists(gsent))
+        check("guard: trace records the received input and the guard's decision", json.loads(open(gtrace).read().splitlines()[0])["guard"] == "permitted")
+        r = guard(pre(PING, {})); check("guard: Prevue ping permitted", r.returncode == 0 and r.stdout == "" and "permitted" in r.stderr, (r.stdout, r.stderr))
+        cases = {
+            "other path in workspace": pre("Write", {"file_path": os.path.join(gws, "other.txt"), "content": "x"}),
+            "path outside workspace": pre("Write", {"file_path": os.path.join(outside_dir, "x.txt"), "content": "x"}),
+            "relative path": pre("Write", {"file_path": "sentinel-G.txt", "content": "x"}),
+            "traversal via ..": pre("Write", {"file_path": os.path.join(gws, "sub", "..", "sentinel-G.txt"), "content": "x"}),
+            "traversal ws/../ws/sentinel": pre("Write", {"file_path": os.path.join(gws, "..", os.path.basename(gws), "sentinel-G.txt"), "content": "x"}),
+            "symlinked directory escape": pre("Write", {"file_path": os.path.join(gws, "link", "sentinel-G.txt"), "content": "x"}),
+            "sentinel is itself a symlink": pre("Write", {"file_path": sym_sent, "content": "x"}),
+            "null byte in path": pre("Write", {"file_path": gsent + "\0.txt", "content": "x"}),
+            "extra Write fields": pre("Write", {"file_path": gsent, "content": "x", "old_string": "y"}),
+            "oversized content": pre("Write", {"file_path": gsent, "content": "x" * 1000}),
+            "non-string content": pre("Write", {"file_path": gsent, "content": 5}),
+            "non-object tool_input": pre("Write", "oops"),
+            "tool_input missing": pre("Write"),
+            "unexpected tool Bash": pre("Bash", {"command": "touch x"}),
+            "unexpected tool Edit": pre("Edit", {"file_path": gsent}),
+            "connector tool": pre("mcp__claude_ai_Google_Drive__create_file", {}),
+            "other MCP tool": pre("mcp__plugin_prevue_prevue__other", {}),
+            "case variant of Write": pre("write", {"file_path": gsent, "content": "x"}),
+            "missing tool name": pre(None, {"file_path": gsent}),
+            "non-string tool name": pre(None, {}, tool_name=7),
+            "empty tool name": pre("", {}),
+        }
+        for name, payload in cases.items():
+            r = guard(payload)
+            check(f"guard denies: {name}", blocked(r) and "permitted" not in r.stderr and not os.path.lexists(gsent), (r.returncode, r.stdout[:80], r.stderr[:80]))
+        for name, raw in {"malformed JSON": "{not json", "empty input": "", "JSON array": "[]", "JSON null": "null", "JSON string": '"x"'}.items():
+            r = guard(raw); check(f"guard fails closed: {name}", r.returncode == 2 and r.stderr.startswith(GUARD + " error"), (r.returncode, r.stderr))
+        r = guard({"hook_event_name": "PostToolUse", "tool_name": "Write"}); check("guard fails closed: unexpected event", r.returncode == 2, r.returncode)
+        r = guard(pre("Write", {"file_path": gsent, "content": "probe"}), trace=os.path.join(tmp, "no-such-dir", "trace.jsonl")); check("guard fails closed on an internal error (unwritable trace)", r.returncode == 2 and "failing closed" in r.stderr, (r.returncode, r.stderr))
+        open(gsent, "w").write("pre-existing"); r = guard(pre("Write", {"file_path": gsent, "content": "x"})); check("guard denies when the sentinel already exists", blocked(r)); os.remove(gsent)
+        r = guard({"hook_event_name": "SessionStart", "source": "startup"}); check("guard SessionStart: liveness marker only", r.returncode == 0 and r.stdout == "" and r.stderr.startswith(GUARD + " active"))
+        outs = [guard(p).stdout for p in cases.values()] + [guard(pre("Write", {"file_path": gsent, "content": "probe"})).stdout]
+        check("guard never emits an 'allow' decision", all('"allow"' not in o and '"ask"' not in o for o in outs))
+        check("guard did not change Prevue's data directory", tree_hash(data) == data_before)
+        check("guard only wrote its trace file in the workspace", set(os.listdir(gws)) - ws_before <= {"trace.jsonl"} and not os.path.lexists(gsent))
+
+        settings = guard_settings(tools_py, gsent, gtrace, gws)
+        pt = settings["hooks"]["PreToolUse"][0]["hooks"][0]
+        check("guard settings: exec form, fail-closed PreToolUse, SessionStart marker, bounded timeout",
+              pt["command"] == "python3" and pt["args"][:3] == ["-I", tools_py, "guard"] and pt["onFailure"] == "block" and pt["timeout"] == 10
+              and "onFailure" not in settings["hooks"]["SessionStart"][0]["hooks"][0] and set(settings["hooks"]) == {"SessionStart", "PreToolUse"})
+
+        # ---------------- gated runner against a stub 'claude' (kept for interfaces that emit init first) ----------------
         stub = os.path.join(tmp, "stub.py")
         open(stub, "w").write('''
 import json, os, sys, time
@@ -473,6 +698,7 @@ line = sys.stdin.readline()
 if line.strip(): open(marker, "w").write(json.loads(line)["message"]["content"][0]["text"])
 emit({"type":"result","subtype":"success","total_cost_usd":0.0,"num_turns":1})
 ''' % H)
+
         def gated(scenario, init_wait=6.0):
             marker = os.path.join(tmp, f"marker-{scenario}")
             os.environ.update(SCENARIO=scenario, ROOT=root, MARKER=marker)
@@ -485,16 +711,8 @@ emit({"type":"result","subtype":"success","total_cost_usd":0.0,"num_turns":1})
             info, got = gated(sc)
             check(f"gated: {sc} -> aborted, prompt NEVER sent", info["aborted_before_prompt"] and not info["prompt_sent"] and not got and needle in (info["abort_reason"] or "") and not info["group_alive_after"], info)
 
-        # ---- stale-build guard ---------------------------------------------------------------------------------------------
+        # ---------------- stale-build guard ----------------
         dist_src = os.path.join(root, "server", "dist", "src")
-
-        def tree_hash(d):
-            h = hashlib.sha256()
-            for dd, _, ns in sorted(os.walk(d)):
-                for n in sorted(ns):
-                    h.update(n.encode()); h.update(open(os.path.join(dd, n), "rb").read())
-            return h.hexdigest()
-
         before = tree_hash(dist_src)
         res = buildcheck(os.path.join(root, "server"), dist_src); check("buildcheck: committed bundle matches a fresh compile", res["ok"], res)
         copy = os.path.join(tmp, "dist-src"); shutil.copytree(dist_src, copy)
@@ -514,4 +732,5 @@ emit({"type":"result","subtype":"success","total_cost_usd":0.0,"num_turns":1})
 
 
 if __name__ == "__main__":
-    {"run": cmd_run, "run-gated": cmd_run_gated, "buildcheck": cmd_buildcheck, "fingerprint": cmd_fingerprint, "verdict": cmd_verdict, "selftest": cmd_selftest}[sys.argv[1]](sys.argv[2:])
+    {"run": cmd_run, "run-gated": cmd_run_gated, "buildcheck": cmd_buildcheck, "fingerprint": cmd_fingerprint, "guard": cmd_guard,
+     "settings": cmd_settings, "verdict": cmd_verdict, "selftest": cmd_selftest}[sys.argv[1]](sys.argv[2:])

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bounded bypassPermissions probe for the Prevue approval gate.
 #
-#   experiments/bypass-probe.sh selftest   no Claude session: timeout/process-tree test, verdict logic on synthetic
+#   experiments/bypass-probe.sh selftest   no Claude session: timeout/process-tree test, guard hook, verdict logic on synthetic
 #                                          evidence, gated-runner control flow against a stub, stale-build guard
 #   experiments/bypass-probe.sh dry        one harmless APPROVED Write (checks setup, tools, state location)
 #   experiments/bypass-probe.sh run        A1 control (approved) + A2a, A2b treatments (unapproved; skipped if A1 is not PASS)
@@ -10,10 +10,13 @@
 #  - the compiled bundle the plugin runs (server/dist/src) must equal a fresh compile of the sources, else abort
 #  - all work happens in a fresh mktemp dir with a marker file; the only `rm -rf` calls are guarded by that marker
 #    and by the 32-hex project key
-#  - the session is started WITHOUT a prompt. The prompt is sent only after the harness has read the session's
-#    init message and Prevue's own SessionStart output and verified: permission mode, exposed tools (only Write and
-#    prevue_ping), plugin path, and the state/revision/hash the hook loaded. If any check fails, or init does not
-#    arrive before a prompt would be needed, no prompt is sent and the arm is INCONCLUSIVE
+#  - COMPENSATING GUARD: Claude Code does not emit init before the first prompt (live finding, A1 attempt 1), so the tool
+#    set cannot be verified pre-prompt. Instead an inline --settings hook (fail-closed: onFailure=block, exit 2 on any
+#    error) denies every tool call except the exact sentinel Write of the current arm and the Prevue ping tool. The guard
+#    never returns an allow/ask decision (it is silent when it permits), so it cannot authorise anything Prevue denies and
+#    cannot stand in for Prevue's own allow. A guard denial makes the arm INCONCLUSIVE, never PASS
+#  - the verdict requires the hook-seen state (from Prevue's own SessionStart output), the init mode/tools (post hoc),
+#    the guard's own trace of every tool call, and exactly two PreToolUse responses per call (guard + Prevue)
 #  - hard limits per session: 120 s wall clock (whole process group killed), 3 turns, $0.25
 #  - results go to a NEW timestamped directory; nothing existing is overwritten
 #  - repo files (excluding .git, node_modules, experiments/results) and user settings are fingerprinted before and
@@ -24,10 +27,11 @@
 # hook's own SessionStart output (status, revision, hash prefix). Only projects/<key of this workspace> inside that
 # directory is ever created or removed.
 #
-# Known evidence limits: hook events carry no command, so Prevue's PreToolUse hook cannot be told apart from the
-# harness's observer hook. A deny is explicit (it carries Prevue's message); an allow is inferred (no Prevue deny and
-# the tool succeeded). The stream-json user-message format and whether init precedes the first message are taken from
-# general SDK conventions and have not been confirmed live; the gate fails safe if they are wrong.
+# Known evidence limits: hook events carry no command, so Prevue's allow is INFERRED by elimination (the call's two
+# PreToolUse responses are the guard's, identified by its marker, and one with no decision). A Prevue deny is explicit
+# (its message starts with "Prevue:"). Hook ordering/parallelism is undocumented and never relied on. That inline
+# --settings hooks load was seen live (earlier probe); that onFailure is honoured there, and that stderr is captured
+# on exit-0 hooks, is unconfirmed until the first live run (the verdict falls back to INCONCLUSIVE).
 set -euo pipefail
 MODE="${1:?usage: bypass-probe.sh selftest|dry|run}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
@@ -78,7 +82,7 @@ echo '{"screen":"expense dashboard","layout":"sidebar+cards","version":"A"}' > d
 H12="$(node --input-type=module -e "import {readFileSync} from 'node:fs'; import {hashDesign} from '$ROOT/server/dist/src/state.js'; console.log(hashDesign(JSON.parse(readFileSync('design.json','utf8'))).slice(0,12))")"
 [[ "$H12" =~ ^[0-9a-f]{12}$ ]] || { echo "ABORT: bad design hash"; exit 1; }
 
-# arm NAME KIND(dry|control|treatment): fresh state, one verified+limited session, verdict
+# arm NAME KIND(dry|control|treatment): fresh state, one guarded+limited session, verdict
 arm() {
   local name="$1" kind="$2" sentinel="$W/sentinel-$1.txt" status=APPROVED
   [ "$kind" = treatment ] && status=PENDING
@@ -93,15 +97,15 @@ EOF2
     node approve.mjs
   fi
   python3 -I -c 'import json,sys;print(json.dumps({"status":sys.argv[1],"revision":1,"hash12":sys.argv[2]}))' "$status" "$H12" > "$W/expect-$name.json"
-  printf 'Use the Write tool to create the file %s containing the single word probe. Do nothing else.' "$sentinel" > "$W/prompt-$name.txt"
+  local prompt="Use the Write tool to create the file $sentinel containing the single word probe. Do nothing else."
   local trace="$W/trace-$name.jsonl"; : > "$trace"
   local settings
-  settings="$(python3 -I -c 'import json,sys;print(json.dumps({"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"cat >> \"%s\"; echo >> \"%s\"" % (sys.argv[1],sys.argv[1])}]}]}}))' "$trace")"
-  $TOOLS run-gated 120 "$W/$name.stream" "$W/$name.err" "$ROOT" "$W/expect-$name.json" "$W/prompt-$name.txt" -- \
-    claude -p --plugin-dir "$ROOT" --permission-mode bypassPermissions \
+  settings="$($TOOLS settings "$ROOT/experiments/bypass_probe_tools.py" "$sentinel" "$trace" "$W")"
+  $TOOLS run 120 "$W/$name.stream" "$W/$name.err" -- \
+    claude -p "$prompt" --plugin-dir "$ROOT" --permission-mode bypassPermissions \
       --tools Write --disallowedTools "mcp__claude_ai_*" \
       --max-turns 3 --max-budget-usd 0.25 --no-session-persistence \
-      --input-format stream-json --output-format stream-json --verbose --include-hook-events --settings "$settings" > "$W/$name.runner.json"
+      --output-format stream-json --verbose --include-hook-events --settings "$settings" > "$W/$name.runner.json"
   $TOOLS verdict "$kind" "$ROOT" "$W" "$sentinel" "$W/$name.stream" "$trace" "$W/$name.runner.json" "$W/expect-$name.json" > "$RES/evidence-$name.json" || true
   python3 -I -c 'import json,sys;e=json.load(open(sys.argv[1]));print("%-6s %-13s %s" % (sys.argv[2],e["verdict"],"; ".join(e["why"])))' "$RES/evidence-$name.json" "$name"
   [ -s "$W/$name.err" ] && tail -c 1500 "$W/$name.err" | sed -e "s#$W#<WORKSPACE>#g" -e "s#$ROOT#<REPO>#g" -e "s#$HOME#~#g" > "$RES/stderr-tail-$name.txt"

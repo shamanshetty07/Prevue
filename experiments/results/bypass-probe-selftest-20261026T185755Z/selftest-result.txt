@@ -1,0 +1,1 @@
+SELFTEST PASS: timeout killed the process group and its descendants

@@ -1,23 +1,32 @@
 import { readFileSync } from "node:fs";
-import { readState, setDesign } from "./gate.js";
+import { initIfMissing, load, registerDesign, reset } from "./state.js";
 
 /**
  * Developer/experiment helper standing in for the future design-registration tool.
- * Deliberately has no `approve` command: approval only flows through the
- * UserPromptSubmit hook, so the agent cannot approve its own work via Bash.
+ * Deliberately has no `approve` command: approval only flows through the UserPromptSubmit hook,
+ * so the agent cannot approve its own work via Bash.
  *
- *   node dist/cli.js set-design <spec.json|-> [projectDir]
- *   node dist/cli.js status [projectDir]
+ *   CLAUDE_PLUGIN_DATA=<dir> node dist/src/cli.js init|status|reset [projectDir]
+ *   CLAUDE_PLUGIN_DATA=<dir> node dist/src/cli.js register <spec.json|-> [projectDir]
  */
 const [cmd, arg, dirArg] = process.argv.slice(2);
-const dir = (cmd === "status" ? arg : dirArg) ?? process.cwd();
+const data = process.env.CLAUDE_PLUGIN_DATA;
+const dir = (cmd === "register" ? dirArg : arg) ?? process.cwd();
 
-if (cmd === "set-design" && arg) {
-  const spec = JSON.parse(readFileSync(arg === "-" ? 0 : arg, "utf8"));
-  console.log(JSON.stringify(setDesign(dir, spec)));
+if (!data) {
+  console.error("CLAUDE_PLUGIN_DATA must be set");
+  process.exit(64);
+}
+if (cmd === "register" && arg) {
+  const r = registerDesign(data, dir, JSON.parse(readFileSync(arg === "-" ? 0 : arg, "utf8")));
+  console.log(JSON.stringify(r));
+} else if (cmd === "init") {
+  console.log(initIfMissing(data, dir));
 } else if (cmd === "status") {
-  console.log(JSON.stringify(readState(dir)));
+  console.log(JSON.stringify(load(data, dir)));
+} else if (cmd === "reset") {
+  console.log(JSON.stringify(reset(data, dir)));
 } else {
-  console.error("usage: cli set-design <spec.json|-> [dir] | status [dir]");
+  console.error("usage: cli init|status|reset [dir] | register <spec.json|-> [dir]");
   process.exit(64);
 }

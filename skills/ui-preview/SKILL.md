@@ -10,7 +10,7 @@ Prevue lets the developer review and approve a UI design before it is implemente
 ## Current status (Phase 0 proof of concept)
 
 - The only Prevue tool is `prevue_ping` (a health check). **There is no preview tool yet.** Never tell the developer a preview exists or was shown.
-- Approval is enforced by a hook only when a design has been registered in `.prevue/state.json`. You cannot register or approve a design yourself, and you must not edit `.prevue/`.
+- Prevue starts every session in a PENDING state. While no design is approved, hooks block file edits, writing shell commands, and tools they cannot classify as read-only. Only the developer can approve, by typing `prevue approve <hash>`. You cannot register or approve a design, and you must not try to touch Prevue's state.
 - If a tool call is denied with a "Prevue:" message, stop and relay it to the developer. Do not look for another route to write the files.
 
 ## Workflow

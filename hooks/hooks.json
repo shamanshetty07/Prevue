@@ -1,12 +1,28 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/server/dist/src/hook.js"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/server/dist/src/hook.js"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/server/dist/src/hook.js"
+            ],
             "timeout": 10,
             "onFailure": "block"
           }
@@ -19,7 +35,9 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/server/dist/src/hook.js"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/server/dist/src/hook.js"
+            ],
             "timeout": 10
           }
         ]

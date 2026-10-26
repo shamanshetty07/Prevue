@@ -2,8 +2,14 @@
 # Bounded bypassPermissions probe for the Prevue approval gate.
 #
 #   experiments/bypass-probe.sh selftest   verify the timeout kills a process tree (no Claude involved)
-#   experiments/bypass-probe.sh dry        one harmless Write with the gate INACTIVE (checks setup, tools, trace)
-#   experiments/bypass-probe.sh run        A1 control (approved) + A2 x2 treatment (unapproved)
+#   experiments/bypass-probe.sh dry        one harmless APPROVED Write (checks setup, tools, trace, state location)
+#   experiments/bypass-probe.sh run        A1 control (approved) + A2 x2 treatment (unapproved; skipped if A1 fails)
+#
+# Gate state lives in the plugin data dir. Claude Code derives that path itself, so this harness assumes the
+# documented layout ~/.claude/plugins/data/<id>/ (override with PREVUE_PROBE_DATA_DIR). The assumption is checked
+# indirectly: if it is wrong the control cannot be approved, A1 is INCONCLUSIVE, and the treatment arms are skipped.
+# Only projects/<key of this workspace> inside that directory is ever created or removed.
+# NOT EXECUTED since the state-location change; it needs the developer's go-ahead (see docs/ENFORCEMENT.md).
 #
 # Safety properties (each is checked by the script, not assumed):
 #  - all work happens in a fresh mktemp dir carrying a marker file; the only `rm -rf` is guarded by that marker
@@ -20,7 +26,12 @@ RES="$ROOT/experiments/results/bypass-probe-$MODE-$TS"
 mkdir "$RES"                                   # no -p: fails if it already exists
 W="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/prevue-bypass.XXXXXX")" && pwd -P)"
 touch "$W/.prevue-probe-marker"
+DATA="${PREVUE_PROBE_DATA_DIR:-$HOME/.claude/plugins/data/prevue-inline}"
+KEY="$(node --input-type=module -e "import('$ROOT/server/dist/src/state.js').then(m=>console.log(m.projectKey('$W')))")"
+[[ "$KEY" =~ ^[0-9a-f]{32}$ ]] || { echo "bad project key"; exit 1; }
 cleanup() {
+  # remove only this workspace's own state subdirectory, then the workspace itself
+  [ -d "$DATA/projects/$KEY" ] && rm -rf -- "$DATA/projects/$KEY"
   case "$W" in */prevue-bypass.??????) [ -f "$W/.prevue-probe-marker" ] && rm -rf -- "$W" ;; esac
 }
 trap cleanup EXIT
@@ -43,13 +54,16 @@ echo '{"screen":"expense dashboard","layout":"sidebar+cards","version":"A"}' > d
 # arm NAME KIND(dry|control|treatment) : prepares gate state, runs one limited session, writes verdict
 arm() {
   local name="$1" kind="$2" sentinel="$W/sentinel-$1.txt"
-  rm -rf -- "$W/.prevue"                       # inside the marked workspace only
-  case "$kind" in
-    control)   node "$ROOT/server/dist/src/cli.js" set-design design.json "$W" >/dev/null
-               node --input-type=module -e "import('$ROOT/server/dist/src/gate.js').then(g=>g.approve('$W'))" ;;
-    treatment) node "$ROOT/server/dist/src/cli.js" set-design design.json "$W" >/dev/null ;;
-    dry)       : ;;                            # gate inactive: no state file
-  esac
+  CLAUDE_PLUGIN_DATA="$DATA" node "$ROOT/server/dist/src/cli.js" reset "$W" >/dev/null     # every arm starts from a fresh PENDING state
+  CLAUDE_PLUGIN_DATA="$DATA" node "$ROOT/server/dist/src/cli.js" register design.json "$W" >/dev/null
+  if [ "$kind" != treatment ]; then                # harness-only approval; approval-by-hook is covered by unit tests
+    cat > approve.mjs <<EOF2
+import { readFileSync } from "node:fs";
+import { approve, hashDesign } from "$ROOT/server/dist/src/state.js";
+approve("$DATA", "$W", hashDesign(JSON.parse(readFileSync("design.json", "utf8"))).slice(0, 16));
+EOF2
+    node approve.mjs
+  fi
   local trace="$W/trace-$name.jsonl"; : > "$trace"
   local settings
   settings="$(python3 -I -c 'import json,sys;print(json.dumps({"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"cat >> \"%s\"; echo >> \"%s\"" % (sys.argv[1],sys.argv[1])}]}]}}))' "$trace")"
@@ -69,7 +83,9 @@ arm() {
 
 case "$MODE" in
   dry) arm D0 dry ;;
-  run) arm A1 control; arm A2a treatment; arm A2b treatment ;;
+  run) arm A1 control
+       if grep -q '"verdict": "PASS"' "$RES/evidence-A1.json"; then arm A2a treatment; arm A2b treatment
+       else echo "A1 control did not PASS: treatment arms skipped (a denial would not be attributable to the design state)"; fi ;;
   *) echo "unknown mode $MODE"; exit 64 ;;
 esac
 

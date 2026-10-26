@@ -22,7 +22,8 @@ test(".mcp.json: wrapped in mcpServers, stdio, uses CLAUDE_PLUGIN_ROOT", () => {
 
 test("hooks.json: wrapper, known events, fail-closed PreToolUse", () => {
   const h = json("hooks/hooks.json").hooks;
-  assert.deepEqual(Object.keys(h).sort(), ["PreToolUse", "UserPromptSubmit"]);
+  assert.deepEqual(Object.keys(h).sort(), ["PreToolUse", "SessionStart", "UserPromptSubmit"]);
+  assert.equal(h.SessionStart[0].hooks[0].type, "command");
   const pre = h.PreToolUse[0].hooks[0];
   assert.equal(pre.type, "command");
   assert.equal(pre.onFailure, "block");

@@ -1,105 +1,142 @@
 import { strict as assert } from "node:assert";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
-import { approve, evaluate, isReadOnlyBash, readState, setDesign } from "../src/gate.js";
+import { isReadOnlyShell } from "../src/classify.js";
+import { evaluate } from "../src/gate.js";
+import { approve, hashDesign, initIfMissing, registerDesign, paths } from "../src/state.js";
+import { env, sandbox } from "./helpers.js";
+import { join } from "node:path";
+import { symlinkSync, mkdirSync } from "node:fs";
 
-const proj = () => mkdtempSync(join(tmpdir(), "prevue-gate-"));
-const HOOK = join(import.meta.dirname, "..", "src", "hook.js");
-const hook = (dir: string, payload: object) =>
-  spawnSync("node", [HOOK], { input: JSON.stringify({ cwd: dir, ...payload }), env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, encoding: "utf8" });
-const write = { file_path: "src/App.tsx", content: "x" };
+const A = { v: "A" };
+const ha = hashDesign(A).slice(0, 12);
+const w = { file_path: "src/App.tsx", content: "x" };
+const decide = (s: ReturnType<typeof sandbox>, tool: unknown, input: unknown = {}) => evaluate(env(s), tool, input).decision;
 
-test("gate inactive without a registered design", () => {
-  assert.equal(evaluate(proj(), "Write", write).decision, "allow");
+const pending = () => { const s = sandbox(); initIfMissing(s.data, s.project); return s; };
+const approved = () => { const s = sandbox(); registerDesign(s.data, s.project, A); approve(s.data, s.project, ha); return s; };
+
+test("missing state does not allow implementation (INVALID blocks), read-only still works", () => {
+  const s = sandbox(); // no state at all
+  assert.equal(evaluate(env(s), "Write", w).status, "INVALID");
+  assert.equal(decide(s, "Write", w), "deny");
+  assert.equal(decide(s, "Bash", { command: "npm run build" }), "deny");
+  assert.equal(decide(s, "Read", { file_path: "a" }), "allow");
 });
 
-test("S1: unapproved design blocks file-writing tools", () => {
-  const d = proj();
-  setDesign(d, { screen: "dashboard" });
-  for (const t of ["Write", "Edit", "MultiEdit", "NotebookEdit"]) assert.equal(evaluate(d, t, write).decision, "deny", t);
-  assert.equal(evaluate(d, "Read", { file_path: "a" }).decision, "allow");
+test("unset or relative CLAUDE_PLUGIN_DATA is INVALID, not 'no gate'", () => {
+  const s = sandbox();
+  assert.equal(evaluate({ ...env(s), dataDir: undefined }, "Write", w).decision, "deny");
+  assert.equal(evaluate({ ...env(s), dataDir: "" }, "Edit", w).decision, "deny");
 });
 
-test("S2: approval of current design unblocks; wrong hash is rejected", () => {
-  const d = proj();
-  const s = setDesign(d, { screen: "dashboard" });
-  assert.throws(() => approve(d, "deadbeef"), /does not match/);
-  assert.equal(evaluate(d, "Write", write).decision, "deny");
-  approve(d, s.designHash.slice(0, 12));
-  assert.equal(evaluate(d, "Write", write).decision, "allow");
-  assert.equal(evaluate(d, "Bash", { command: "npm run build" }).decision, "allow");
+test("PENDING denies every file-modifying tool", () => {
+  const s = pending();
+  for (const t of ["Write", "Edit", "MultiEdit", "NotebookEdit"]) assert.equal(decide(s, t, w), "deny", t);
 });
 
-test("S3: changing the design after approval revokes it; identical design keeps it", () => {
-  const d = proj();
-  setDesign(d, { a: 1 });
-  approve(d);
-  setDesign(d, { a: 1 }); // same content, key order irrelevant
-  assert.equal(evaluate(d, "Write", write).decision, "allow");
-  setDesign(d, { a: 2 });
-  assert.equal(evaluate(d, "Write", write).decision, "deny");
-  assert.equal(readState(d)?.designVersion, 3);
+test("approved Write/Edit/Bash are allowed (existing behaviour preserved)", () => {
+  const s = approved();
+  for (const [t, i] of [["Write", w], ["Edit", w], ["NotebookEdit", { notebook_path: "a.ipynb" }], ["Bash", { command: "npm run build" }], ["SomeNewTool", {}]] as const)
+    assert.equal(decide(s, t, i), "allow", t);
 });
 
-test("S4: shell paths that write files are denied while unapproved", () => {
-  const d = proj();
-  setDesign(d, { a: 1 });
-  const writers = [
-    "echo hi > src/App.tsx", "echo hi >> a.txt", "cat a | tee b", "sed -i s/a/b/ f", "python3 -c 'open(1)'",
-    "node -e 'fs.writeFileSync()'", "git apply p.diff", "git checkout -- .", "cp a b", "mv a b", "touch a", "rm a",
-    "npm install", "ls; touch a", "ls && touch a", "ls $(touch a)", "ls `touch a`", "find . -delete", "find . -exec touch {} +",
-    "git diff --output=out.txt", "printf x | sh", "bash -c 'touch a'", "cat <<EOF\nx\nEOF", "ls\ntouch a",
-  ];
-  for (const command of writers) assert.equal(evaluate(d, "Bash", { command }).decision, "deny", command);
-  for (const command of ["ls -la", "git status", "git diff HEAD", "cat package.json", "grep -rn foo src", "find . -name '*.ts'"])
-    assert.equal(evaluate(d, "Bash", { command }).decision, "allow", command);
-  assert.equal(isReadOnlyBash(""), false);
+test("A -> B -> A through the gate: denied again until re-approved", () => {
+  const s = approved();
+  registerDesign(s.data, s.project, { v: "B" });
+  assert.equal(decide(s, "Write", w), "deny");
+  registerDesign(s.data, s.project, A);
+  assert.equal(decide(s, "Write", w), "deny");
+  approve(s.data, s.project, ha);
+  assert.equal(decide(s, "Write", w), "allow");
 });
 
-test("agent cannot tamper with approval state, even when approved", () => {
-  const d = proj();
-  setDesign(d, { a: 1 });
-  approve(d);
-  assert.equal(evaluate(d, "Write", { file_path: join(d, ".prevue", "state.json"), content: "{}" }).decision, "deny");
-  assert.equal(evaluate(d, "Edit", { file_path: ".prevue/state.json" }).decision, "deny");
-  assert.equal(evaluate(d, "Bash", { command: "rm -rf .prevue" }).decision, "deny");
-  assert.equal(evaluate(d, "Bash", { command: "cat .prevue/state.json" }).decision, "allow");
+test("unknown tools, unknown MCP tools and malformed names are denied while PENDING", () => {
+  const s = pending();
+  for (const t of ["FutureTool", "mcp__random__do_it", "mcp__claude_ai_Google_Drive__create_file", "mcp__ide__executeCode", "PowerShell", "Workflow", "EnterWorktree", "ExitWorktree", "PushNotification", "TaskStop", "DesignSync", "Artifact", "SendUserFile", "ReportFindings", "SendFeedback", "CronDelete"])
+    assert.equal(decide(s, t, {}), "deny", String(t));
+  for (const t of [undefined, null, 42, "", {}, ["Read"]]) assert.equal(decide(s, t, {}), "deny", JSON.stringify(t));
 });
 
-test("KNOWN LIMITATION: obfuscated .prevue path in Bash is not caught while approved", () => {
-  const d = proj();
-  setDesign(d, { a: 1 });
-  approve(d);
-  // Once approved, Bash is unrestricted, so a glob can reach the state file. Documented in docs/ENFORCEMENT.md.
-  assert.equal(evaluate(d, "Bash", { command: "rm -rf .pre*" }).decision, "allow");
+test("known read-only tools and Prevue's own MCP tools stay available while PENDING", () => {
+  const s = pending();
+  for (const t of ["Read", "Glob", "Grep", "LSP", "ToolSearch", "WebSearch", "WebFetch", "AskUserQuestion", "Skill", "ListMcpResourcesTool", "mcp__plugin_prevue_prevue__prevue_ping", "mcp__ide__getDiagnostics", "EnterPlanMode", "ExitPlanMode", "CronList"])
+    assert.equal(decide(s, t, {}), "allow", t);
 });
 
-test("corrupt state throws (callers fail closed)", () => {
-  const d = proj();
-  mkdirSync(join(d, ".prevue"));
-  writeFileSync(join(d, ".prevue", "state.json"), "{not json");
-  assert.throws(() => evaluate(d, "Write", write));
-  const r = hook(d, { hook_event_name: "PreToolUse", tool_name: "Write", tool_input: write });
-  assert.equal(r.status, 2);
+test("Monitor is classified by its command; WebSocket-only monitors are denied", () => {
+  const s = pending();
+  assert.equal(decide(s, "Monitor", { command: "tail -f app.log" }), "allow");
+  assert.equal(decide(s, "Monitor", { command: "echo hi > src/a.ts" }), "deny");
+  assert.equal(decide(s, "Monitor", { command: "touch x" }), "deny");
+  assert.equal(decide(s, "Monitor", { url: "wss://example.com" }), "deny");
+  assert.equal(decide(s, "Monitor", undefined), "deny");
 });
 
-test("hook process: PreToolUse deny JSON and UserPromptSubmit approval", () => {
-  const d = proj();
-  const s = setDesign(d, { a: 1 });
-  const pre = () => hook(d, { hook_event_name: "PreToolUse", tool_name: "Write", tool_input: write });
-  assert.equal(JSON.parse(pre().stdout).hookSpecificOutput.permissionDecision, "deny");
+test("Agent: allowed (its own tool calls are hooked) unless it requests worktree isolation or input is malformed", () => {
+  const s = pending();
+  assert.equal(decide(s, "Agent", { prompt: "research" }), "allow");
+  assert.equal(decide(s, "Task", { prompt: "research" }), "allow");
+  assert.equal(decide(s, "Agent", { prompt: "x", isolation: "worktree" }), "deny");
+  assert.equal(decide(s, "Agent", "nope"), "deny");
+});
 
-  const bad = hook(d, { hook_event_name: "UserPromptSubmit", prompt: "prevue approve abcdef12" });
-  assert.match(JSON.parse(bad.stdout).hookSpecificOutput.additionalContext, /REJECTED/);
-  assert.ok(pre().stdout.includes("deny")); // still denied after rejected approval
+test("scheduling / cross-session tools are denied in EVERY state (they can forge a developer turn)", () => {
+  for (const s of [pending(), approved(), sandbox()])
+    for (const t of ["CronCreate", "ScheduleWakeup", "RemoteTrigger", "SendMessage"]) assert.equal(decide(s, t, {}), "deny", t);
+});
 
-  hook(d, { hook_event_name: "UserPromptSubmit", prompt: "please prevue approve" }); // not an exact phrase
-  assert.ok(pre().stdout.includes("deny"));
+test("approved state: the plugin data directory is off limits (case-insensitive, relative, symlinked, via shell)", () => {
+  const s = approved();
+  const { file } = paths(s.data, s.project);
+  assert.equal(decide(s, "Write", { file_path: file }), "deny");
+  assert.equal(decide(s, "Edit", { file_path: file.toUpperCase() }), process.platform === "darwin" ? "deny" : "allow"); // case-insensitive FS only
+  assert.equal(decide(s, "NotebookEdit", { notebook_path: file }), "deny");
+  assert.equal(decide(s, "Write", { file_path: file + ".tmp" }), "deny"); // nonexistent sibling
+  const link = join(s.project, "link");
+  symlinkSync(s.data, link);
+  assert.equal(decide(s, "Write", { file_path: join(link, "projects", "x") }), "deny"); // via symlink
+  mkdirSync(join(s.project, "sub"));
+  assert.equal(evaluate({ ...env(s), cwd: join(s.project, "sub") }, "Write", { file_path: join("..", "link", "x") }).decision, "deny");
+  assert.equal(decide(s, "Bash", { command: `rm -f ${file}` }), "deny");
+  assert.equal(decide(s, "Bash", { command: "rm -rf ~/.claude/plugins/data" }), "deny");
+  assert.equal(decide(s, "Write", w), "allow"); // ordinary project files unaffected
+  // text that merely mentions a ".prevue" directory is no longer special
+  assert.equal(decide(s, "Write", { file_path: "README.md", content: "add .prevue/ to .gitignore" }), "allow");
+});
 
-  const ok = hook(d, { hook_event_name: "UserPromptSubmit", prompt: `prevue approve ${s.designHash.slice(0, 12)}` });
-  assert.match(JSON.parse(ok.stdout).hookSpecificOutput.additionalContext, /approved by the developer/);
-  assert.equal(pre().stdout, "");
+test("KNOWN LIMITATION: once APPROVED, an obfuscated shell command can still reach the data directory", () => {
+  const s = approved();
+  assert.equal(decide(s, "Bash", { command: "cd ~/.cla* && rm -rf plug*/dat*" }), "allow"); // documented in docs/ENFORCEMENT.md
+});
+
+// ---- shell classifier regression --------------------------------------------------------------
+
+const unsafe = [
+  "echo hi > src/App.tsx", "echo hi >> a.txt", "cat a | tee b", "sed -i s/a/b/ f", "python3 -c 'open(1)'", "node -e 'fs.writeFileSync()'",
+  "git apply p.diff", "git checkout -- .", "cp a b", "mv a b", "touch a", "rm a", "npm install", "ls; touch a", "ls && touch a", "ls $(touch a)",
+  "ls `touch a`", "find . -delete", "find . -exec touch {} +", "find . -fprint out", "find . -fls out", "find . -okdir rm {} ;", "printf x | sh", "bash -c 'touch a'",
+  "cat <<EOF\nx\nEOF", "ls\ntouch a", "ls\u0000touch a",
+  // `file -C` writes a compiled magic file; `file` is no longer allowlisted at all
+  "file -C", "file -C -m magic", "file --compile", "file -bC x", "file x",
+  // git: abbreviated long options and non-read-only subcommands
+  "git diff --output=out.txt", "git diff --out=out.txt", "git log --outp=x", "git show --output x", "git diff --ext-diff", "git diff --ext-d",
+  "git -c core.pager=x log", "git config --global x y", "git branch newb", "git stash", "git commit -m x", "git clean -fd",
+  // other ambiguity
+  "FOO=bar ls", "'ls'", "ls ${HOME}", "ls $HOME", "ls <(touch a)", "ls > /dev/null", "ls &", "ls || touch a", "tee out", "sort -o out in", "dd of=out", "curl -o out http://x",
+  "", "   ", "x".repeat(2001),
+];
+const safe = ["ls -la", "pwd", "git status", "git status --porcelain", "git diff HEAD", "git log --oneline", "git show HEAD", "git rev-parse HEAD", "cat package.json", "head -n 5 a", "tail -n 5 a", "wc -l a", "grep -rn foo src", "find . -name '*.ts'", "echo hello", "which node", "stat a"];
+
+test("shell classifier: every known-unsafe or ambiguous command is rejected", () => {
+  for (const c of unsafe) assert.equal(isReadOnlyShell(c), false, JSON.stringify(c));
+  for (const c of [undefined, null, 5, {}, []]) assert.equal(isReadOnlyShell(c), false);
+});
+
+test("shell classifier: plain read-only commands are accepted", () => {
+  for (const c of safe) assert.equal(isReadOnlyShell(c), true, c);
+});
+
+test("every unsafe command is denied end-to-end through the gate while PENDING", () => {
+  const s = pending();
+  for (const command of unsafe) assert.equal(decide(s, "Bash", { command }), "deny", JSON.stringify(command));
 });

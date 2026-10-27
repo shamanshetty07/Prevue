@@ -10,7 +10,7 @@ test("MCP server starts over stdio and prevue_ping responds", async () => {
   await client.connect(transport);
   try {
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name), ["prevue_ping"]);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ["prevue_ping", "prevue_validate_spec"]); // validation is pure; there is no registration or approval tool
 
     const res = await client.callTool({ name: "prevue_ping", arguments: {} });
     assert.deepEqual(res.structuredContent, { service: "prevue", status: "ok", phase: 0 });

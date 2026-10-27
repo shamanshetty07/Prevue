@@ -24,6 +24,29 @@ const schemaError = (issues: SpecIssue[]): SpecResult => ({ ok: false, kind: "sc
 /** The hash the developer approves: computed from the validated, normalized spec, never from the raw input. */
 export const specHash = (spec: UiSpec): string => hashDesign(spec);
 
+/** V8's JSON.parse messages quote a snippet of the input; keep only the position so untrusted text is never echoed. */
+function jsonSyntaxMessage(e: unknown): string {
+  const m = /\(line (\d+) column (\d+)\)/.exec(String((e as Error)?.message ?? ""));
+  return m ? `input is not valid JSON (line ${m[1]}, column ${m[2]})` : "input is not valid JSON";
+}
+
+/**
+ * The machine-readable form returned by the CLI (`validate`) and the MCP tool (`prevue_validate_spec`).
+ * `registered` and `approved` are always false: validation only checks conformance to the schema.
+ */
+export type SpecReport =
+  | { valid: true; registered: false; approved: false; schemaVersion: 1; hash: string; stats: { nodes: number; depth: number }; spec: UiSpec }
+  | { valid: false; registered: false; approved: false; kind: "parse_error" | "schema_error" | "file_error"; issues: SpecIssue[] };
+
+export function specReport(r: SpecResult): SpecReport {
+  return r.ok
+    ? { valid: true, registered: false, approved: false, schemaVersion: SPEC_SCHEMA_VERSION, hash: r.hash, stats: r.stats, spec: r.spec }
+    : { valid: false, registered: false, approved: false, kind: r.kind, issues: r.issues };
+}
+
+/** A failure to obtain the text at all (CLI only); the message never contains a path or file content. */
+export const fileErrorReport = (code: string, message: string): SpecReport => ({ valid: false, registered: false, approved: false, kind: "file_error", issues: [{ path: "", code, message }] });
+
 /** Stages 1-3: size, JSON syntax, and an iterative complexity guard (so deep input cannot overflow the stack later). */
 export function parseSpecText(text: string): SpecResult {
   if (typeof text !== "string") return parseError("invalid_json", "input is not text");
@@ -32,7 +55,7 @@ export function parseSpecText(text: string): SpecResult {
   try {
     value = JSON.parse(text);
   } catch (e) {
-    return e instanceof RangeError ? parseError("too_complex", "input is nested too deeply") : parseError("invalid_json", clip((e as Error).message));
+    return e instanceof RangeError ? parseError("too_complex", "input is nested too deeply") : parseError("invalid_json", jsonSyntaxMessage(e));
   }
   return validateSpec(value);
 }

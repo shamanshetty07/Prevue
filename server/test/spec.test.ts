@@ -409,6 +409,26 @@ test("the spec modules import only zod, the pure hash function and each other (n
   }
 });
 
+test("KNOWN LIMITATION: duplicate JSON object keys are not detected; the last one wins (JSON.parse behaviour)", () => {
+  // The hash and everything shown later come from the parsed (last-wins) value, so what is approved is what is rendered.
+  // The risk is a human reading the raw input text and seeing the earlier value. Persist and show the normalized spec only.
+  const dup = exampleText.replace('"name": "Expense dashboard"', '"name": "Innocent first value", "name": "Expense dashboard"');
+  assert.notEqual(dup, exampleText);
+  const r = parseSpecText(dup);
+  assert.equal(r.ok, true);
+  assert.equal((r as any).spec.screen.name, "Expense dashboard");
+  assert.equal((r as any).hash, EXAMPLE_HASH);
+  const reversed = parseSpecText(exampleText.replace('"name": "Expense dashboard"', '"name": "Expense dashboard", "name": "Last value wins"'));
+  assert.equal((reversed as any).spec.screen.name, "Last value wins");
+});
+
+test("parse errors never echo the input (V8 quotes a snippet of it in its own message)", () => {
+  const r = parseSpecText('{"a": SECRETMARKER}');
+  assert.equal(r.ok, false);
+  assert.ok(!JSON.stringify(r).includes("SECRETMARKER"));
+  assert.match((r as any).issues[0].message, /^input is not valid JSON/);
+});
+
 test("hashDesign is unchanged for arbitrary Phase 0 designs (the experiment harness still registers them)", () => {
   assert.equal(hashDesign({ screen: "expense dashboard", layout: "sidebar+cards", version: "A" }).slice(0, 12), "3c5279481529");
 });

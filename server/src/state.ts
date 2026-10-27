@@ -24,6 +24,8 @@ export interface GateState {
   approvedRevision: number | null;
   approvedHash: string | null;
   approvedAt: string | null;
+  /** Present (true) only when the design was registered together with a stored canonical specification; the gate then also verifies that file. */
+  canonical?: true;
   createdAt: string;
   updatedAt: string;
 }
@@ -96,6 +98,7 @@ export function load(dataDir: string, projectDir: string): Loaded {
     if (o.approvedHash !== o.designHash) return bad("approvedHash does not match designHash");
     if (typeof o.approvedAt !== "string") return bad("approvedAt malformed");
   }
+  if (o.canonical !== undefined && (o.canonical !== true || o.designHash === null)) return bad("canonical marker malformed");
   if (typeof o.createdAt !== "string" || typeof o.updatedAt !== "string") return bad("timestamps malformed");
   return { status: o.approvedRevision === null ? "PENDING" : "APPROVED", state: o as GateState };
 }
@@ -153,7 +156,7 @@ export function initIfMissing(dataDir: string, projectDir: string): "created" | 
 }
 
 /** Register the current design. Unchanged content is a no-op; any change bumps the revision and clears approval. */
-export function registerDesign(dataDir: string, projectDir: string, spec: unknown): { state: GateState; changed: boolean } {
+export function registerDesign(dataDir: string, projectDir: string, spec: unknown, opts: { canonical?: boolean } = {}): { state: GateState; changed: boolean } {
   const { dir, file, lock } = paths(dataDir, projectDir);
   return withLock(dir, lock, () => {
     let cur = load(dataDir, projectDir);
@@ -164,7 +167,8 @@ export function registerDesign(dataDir: string, projectDir: string, spec: unknow
     if (cur.status === "INVALID") throw new Error(`Prevue state is INVALID (${cur.reason}); the developer must run "prevue reset".`);
     const designHash = hashDesign(spec);
     if (cur.state.designHash === designHash) return { state: cur.state, changed: false };
-    const next: GateState = { ...cur.state, revision: cur.state.revision + 1, designHash, approvedRevision: null, approvedHash: null, approvedAt: null, updatedAt: new Date().toISOString() };
+    const { canonical: _previous, ...rest } = cur.state; // the marker describes one revision; never carry it to the next
+    const next: GateState = { ...rest, revision: cur.state.revision + 1, designHash, approvedRevision: null, approvedHash: null, approvedAt: null, updatedAt: new Date().toISOString(), ...(opts.canonical ? { canonical: true as const } : {}) };
     writeAtomic(file, next);
     return { state: next, changed: true };
   });

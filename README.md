@@ -41,11 +41,13 @@ Prints one JSON line and exits `0` (valid), `1` (not valid), `2` (the file could
 
 **Validation, registration and approval are separate.** Validation checks conformance to the schema and nothing else: it persists nothing, registers nothing and cannot approve. It does not establish design quality, renderer safety or developer approval. Registration (recording a design so the gate can be approved against it) exists only as the `register` developer stand-in, which still takes arbitrary JSON and does not validate it. Approval happens only when the developer types `prevue approve <hash>`. The design for storing a validated specification is a proposal, not an implementation: [`docs/PHASE1C-DESIGN.md`](docs/PHASE1C-DESIGN.md).
 
-Current limitations: one screen kind (`dashboard`); `prevue_validate_spec` is permitted while the gate is PENDING only because the gate treats every Prevue MCP tool as read-only; the CLI cannot be run by Claude while the gate is PENDING (shell commands are not on the read-only list), so Claude validates through the MCP tool.
+Current limitations: one screen kind (`dashboard`); `prevue_validate_spec` is permitted while the gate is PENDING because it is on the gate's exact-name read-only list (`prevue_ping`, `prevue_validate_spec`); any other Prevue tool is denied until added there; the CLI cannot be run by Claude while the gate is PENDING (shell commands are not on the read-only list), so Claude validates through the MCP tool.
 
 ## Gate in one paragraph
 
 Prevue keeps a per-project state under the plugin data directory (`${CLAUDE_PLUGIN_DATA}`). A `SessionStart` hook creates it as **PENDING**. While the state is PENDING or INVALID (missing, malformed, inconsistent), a `PreToolUse` hook allows only tools it knows to be read-only and denies the rest, including unknown tools. Only the developer can approve, by typing `prevue approve <hash>`; approval is bound to the current design **revision**, so changing the design (even back to an earlier one) requires a fresh approval. `prevue reset` is the developer's recovery path for an INVALID state. It is a guard against Claude acting early, not a security boundary against the machine's owner. Details, evidence and limits: [`docs/ENFORCEMENT.md`](docs/ENFORCEMENT.md).
+
+The gate can also refuse an APPROVED state whose stored canonical design cannot be verified (missing, corrupt, invalid, hash mismatch, symlinked). That check is implemented and tested, but it applies only to states carrying a `canonical` marker, which nothing in production sets until the Phase 1c registration tool exists; today's states are unaffected. Details and the proposed registration design: [`docs/PHASE1C-DESIGN.md`](docs/PHASE1C-DESIGN.md).
 
 Consequence: with the plugin enabled, implementation is blocked in every project until a design is registered and approved. Disable the plugin for work that is not UI work.
 

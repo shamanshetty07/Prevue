@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { verifyStoredDesign } from "../src/design-store.js";
 
 /** Every test runs in throwaway directories under the OS temp dir; nothing touches the repo or ~/.claude. */
 const made: string[] = [];
@@ -18,7 +19,7 @@ export const HOOK = join(import.meta.dirname, "..", "src", "hook.js");
 export interface Sandbox { data: string; project: string }
 export const sandbox = (): Sandbox => ({ data: tmp("data"), project: tmp("proj") });
 
-export const env = (s: Sandbox) => ({ dataDir: s.data, projectDir: s.project, cwd: s.project });
+export const env = (s: Sandbox) => ({ dataDir: s.data, projectDir: s.project, cwd: s.project, verifyDesign: verifyStoredDesign });
 
 /** Run the real hook script as Claude Code would: JSON on stdin, plugin/project dirs in the environment. */
 export function hook(s: Sandbox, payload: unknown, extraEnv: Record<string, string | undefined> = {}) {

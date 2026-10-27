@@ -19,7 +19,8 @@ const READ_ONLY_TOOLS = new Set([
   // non-interactive mode; see docs/ENFORCEMENT.md). Worktree isolation is denied below.
   "Agent", "Task",
 ]);
-const READ_ONLY_MCP = [/^mcp__plugin_prevue_prevue__/, /^mcp__ide__getDiagnostics$/];
+/** Exact names only: sharing a prefix with an allowed tool grants nothing. A new Prevue tool is denied until it is added here. */
+const READ_ONLY_MCP = new Set(["mcp__plugin_prevue_prevue__prevue_ping", "mcp__plugin_prevue_prevue__prevue_validate_spec", "mcp__ide__getDiagnostics"]);
 const SHELL_TOOLS = new Set(["Bash", "Monitor"]);
 const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
@@ -114,7 +115,7 @@ export function classifyPending(toolName: unknown, toolInput: unknown): Verdict 
   }
   if (READ_ONLY_TOOLS.has(toolName)) return { allow: true };
   if (toolName.startsWith("mcp__")) {
-    return READ_ONLY_MCP.some((re) => re.test(toolName)) ? { allow: true } : deny(`MCP tool ${toolName} is not on Prevue's read-only list`);
+    return READ_ONLY_MCP.has(toolName) ? { allow: true } : deny(`MCP tool ${toolName} is not on Prevue's read-only list`);
   }
   return deny(`tool ${toolName} is not on Prevue's read-only list`);
 }

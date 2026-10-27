@@ -7,20 +7,20 @@ description: Prevue workflow for building a new UI (dashboard, page, screen, or 
 
 Prevue lets the developer review and approve a UI design before it is implemented.
 
-## Current status (Phase 1b)
+## Current status (Phase 1c)
 
-- Prevue tools: `prevue_ping` (health check) and `prevue_validate_spec` (checks a UI specification; changes nothing). **There is no registration tool and no preview tool yet.** Never tell the developer a preview exists or was shown, or that a design was registered.
-- Prevue starts every session in a PENDING state. While no design is approved, hooks block file edits, writing shell commands, and tools they cannot classify as read-only. Only the developer can approve, by typing `prevue approve <hash>`. You cannot register or approve a design, and you must not try to touch Prevue's state.
+- Prevue tools: `prevue_ping` (health check), `prevue_validate_spec` (checks a UI specification; changes nothing) and `prevue_register_design` (stores a validated specification as the current revision; **Prevue's gate only lets it run once a design is already approved**, see below). **There is no preview tool yet.** Never tell the developer a preview exists or was shown, and never say a design was registered unless a registration result said `registered: true`.
+- Prevue starts every session in a PENDING state. While no design is approved, hooks block file edits, writing shell commands, and every tool they cannot classify as read-only, **including `prevue_register_design`**. Only the developer can approve, by typing `prevue approve <hash>`. You can never approve a design, and you must not try to touch Prevue's state.
 - If a tool call is denied with a "Prevue:" message, stop and relay it to the developer. Do not look for another route to write the files.
 
 **A valid specification is not an approved design.** Validation confirms conformance to the schema; it does not establish design quality, renderer safety, or developer approval. Implementation stays blocked unless the existing approval workflow permits it, and a validation result never changes that.
 
 ## Validation, registration, preview, approval
 
-These are four separate steps. Only the first exists today.
+These are four separate steps. Validation, registration and approval exist; preview does not.
 
 1. **Validation** (available): `prevue_validate_spec` returns the normalized spec and its hash, or issues. It registers, stores and approves nothing.
-2. **Registration** (not available yet): will store the normalized spec with its hash as a new revision, which revokes any earlier approval.
+2. **Registration** (available, see below): validates again, stores the normalized (canonical) spec under its hash, and records it as a new PENDING revision, which revokes any earlier approval. Registering an identical design is a no-op. Registration never approves.
 3. **Preview** (not available yet): will show the registered design in the browser.
 4. **Approval** (developer only): the developer types `prevue approve <hash>` for the revision they reviewed.
 
@@ -48,6 +48,14 @@ Plain JSON, strict: an unknown property is an error. Everything visual is a name
 - Any component may carry an `id` (`a-z`, digits, `-`, starts with a letter, unique in the spec). Header and sidebar cannot be nested in `main`.
 - Table rows hold sample text, not real data. Do not put real user or customer data in a spec.
 - A full example: `docs/examples/expense-dashboard.json`.
+
+## Registering a design
+
+- **Developer (any time, including the first registration):** `CLAUDE_PLUGIN_DATA=<dir> node <plugin>/server/dist/src/cli.js register-design <spec.json|-> [projectDir]`. Exit codes: `0` registered or unchanged, `1` invalid specification, `2` input file problem, `3` refused or failed, `64` usage or configuration (an unset, empty or relative `CLAUDE_PLUGIN_DATA`). Output is one JSON line like the MCP result below.
+- **Claude: `prevue_register_design` with `{ "spec": "<the JSON as text>" }`.** Prevue's gate treats it as state-changing, so while no design is approved it is denied like any other write. That means **you cannot make the first registration**, nor re-register while a design is pending. Hand the validated spec to the developer and ask them to run `register-design`. Once a design is approved, you may call the tool to propose a revised design; that immediately returns the gate to PENDING and the developer must approve the new hash.
+- Result: `{ "registered": true, "approvedByThisCall": false, "outcome": "created|updated|unchanged", "changed": bool, "revision": n, "hash": "<64 hex>", "status": "PENDING|APPROVED", "design": "written|reused" }`, or `{ "registered": false, "approvedByThisCall": false, "kind": "parse_error|schema_error|config_error|refused|failed", "code": "...", "message": "...", "issues": [...] }`. Nothing is echoed back from your input.
+- Tell the developer the `hash` and that they must type `prevue approve <first 12 characters of the hash>` for that exact revision. A registered design is not an approved design.
+- Refusal codes (nothing was changed): `state_invalid`, `legacy_registration`, `stored_design_unverifiable` (the developer must run `prevue reset`), `design_cap_reached` (50 stored designs; none are deleted automatically), `design_file_conflict` and `design_store_untrusted` (something unexpected is in the design store), `canonical_too_large`. `config_error` means the plugin data or project directory is unavailable. Do not retry in a loop and do not look for another route.
 
 ## Using the validator
 
@@ -85,8 +93,8 @@ The hash is of the normalized spec (defaults filled in, text trimmed), so reorde
 
 1. Clarify the UI requirements. Ask only about what you cannot reasonably infer.
 2. Write the design as a specification in the format above (layout regions, components, sample data, theme), and check it with `prevue_validate_spec`. Fix every issue it reports.
-3. Show the spec to the developer. Say plainly that it passed validation only (not registered, not previewed, not approved) and that only a text spec is available; when a Prevue preview tool exists, request a preview through it.
-4. Revise the spec on feedback. Each revision is a new design that needs fresh approval.
+3. Show the spec to the developer. Say plainly that it passed validation (not registered unless a registration result said so, not previewed, not approved) and that only a text spec is available. Ask the developer to register it with `register-design` (or, if a design is already approved, register it yourself with `prevue_register_design`), then to approve the reported hash.
+4. Revise the spec on feedback. Each revision is a new design that needs registration and fresh approval.
 5. Implement only after the developer has approved the current design. Treat approval as given only if the developer said so in this conversation about this version of the design, or a Prevue message reports it. Do not infer approval from silence or from an earlier version.
 
 Call `prevue_ping` to check that the Prevue server is reachable.

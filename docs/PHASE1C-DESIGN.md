@@ -1,6 +1,6 @@
 # Design note: persisting the canonical specification (Phase 1c, not implemented)
 
-Status: **partly implemented.** Implemented and tested: the gate-side integrity check of a stored design (section "Approved-design integrity"), the exact-name MCP allowlist, and the state marker they rely on. **Not implemented:** `prevue_register_design`, writing design files, pruning, preview. Today nothing in production writes a design file or sets the marker, so real states are unaffected until Phase 1c; only tests exercise the check.
+Status: **implemented and tested** (registration, canonical storage, integrity check, exact-name allowlist, design cap). **Not implemented:** pruning, preview, any live Claude Code validation of the registration tool. The original proposal is kept below; where the implementation differs, the section "As implemented" is authoritative.
 
 ## What the Phase 1b diagnostic settled (Claude Code 2.1.311, `--plugin-dir`, `claude -p`, one run)
 
@@ -25,6 +25,19 @@ Why a separate file and not a field in `state.json`: the hook reads `state.json`
 4. Write `designs/<hash>.json` (temp file, mode 0600, rename; directory 0700). If a regular file with that name already exists and verifies, keep it. Refuse if the path exists and is a symlink or non-regular file (`lstat`).
 5. Call `registerDesign(dataDir, projectDir, spec, { canonical: true })` under its lock (the option sets the marker for this revision only). It bumps the revision and clears approval only when the hash changed.
 6. Return `{registered: true, approved: false, revision, hash, changed}`. Registration never approves.
+
+## As implemented
+
+- **Core:** `server/src/register.ts` (`registerCanonical`), shared by the CLI command `register-design <file|-> [projectDir]` and the MCP tool `prevue_register_design`. `server/src/runtime.ts` resolves the environment with the hook's rules: `CLAUDE_PLUGIN_DATA` must be absolute, and the project must be an absolute `CLAUDE_PROJECT_DIR` (CLI: the argument or the working directory, made absolute). The MCP process's own working directory is never used.
+- **Lock:** the whole decision-to-state-write sequence runs under the existing `withLock` mkdir lock (now exported) through `registerLocked`, the unlocked body of `registerDesign`. There is no second lock. `registerDesign` itself is unchanged for its callers.
+- **Order:** validate and serialize (`canonicalJson`, the exact text that is hashed) without touching disk; refuse if over 64 KB; take the lock; read the state; check capacity; write `designs/<hash>.json` (exclusive temp file, mode 0600, fsync, then a hard link to the final name, so an existing name is never overwritten; directory 0700); re-verify the file with the gate's verifier; only then write the state with `canonical: true`.
+- **Failure model:** any failure before the state write leaves state and approval untouched. If the state write fails the previous state stays valid and an unused design file may remain (an orphan; the gate reads only the file the state names; a retry reuses it). If a freshly written file fails verification it is removed. A stale `*.tmp` can survive a crash and is ignored; nothing prunes it yet.
+- **Identical registration:** a no-op (no revision change, approval kept) only if the current state is canonical and its stored design verifies. A canonical state whose design no longer verifies is **not repaired**: it is refused (`stored_design_unverifiable`) and the developer must run `prevue reset`. An unmarked (legacy) state with the same hash is refused (`legacy_registration`) for the same reason: upgrading would be a state transition that the state machine does not define, and `reset` followed by registration always works.
+- **Existing file under the hash:** if it verifies it is reused and its bytes are left alone (it may be differently formatted); if it does not verify, registration is refused (`design_file_conflict`) and the file is not overwritten or deleted. A symlink, directory or other non-regular file there, or a symlinked `designs/` directory, is refused (`design_store_untrusted`).
+- **Cap:** 50 conforming files (`<64 hex>.json`) per project; a new design at the cap is refused (`design_cap_reached`) before anything is written; reuse of an already stored design needs no slot. The count is taken under the lock. Nothing is deleted.
+- **Approve:** the hook now refuses to approve a canonical revision whose stored design does not verify (`REJECTED ... nothing was approved`), so an approval is never recorded that the gate would then refuse to honour.
+- **Permission of the MCP tool:** the runtime name is `mcp__plugin_prevue_prevue__prevue_register_design`. It is deliberately not in the read-only allowlist, so while no design is approved (PENDING or INVALID) the gate denies it like any write, and once a design is approved the existing APPROVED policy lets it run. Consequence, to be decided by the maintainer: **Claude cannot make the first registration, or re-register while a design is pending**; the developer does that with `register-design`. In APPROVED a registration moves the gate back to PENDING, which fails closed. If Claude should be able to register while PENDING, that needs a separate, deliberately reviewed class in `classify.ts` ("changes state but cannot approve"); it was not added.
+- **Marker upgrade and pruning:** no upgrade of legacy states and no pruning exist.
 
 ## Behaviour
 

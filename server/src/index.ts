@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { registerCanonical } from "./register.js";
 import { LIMITS } from "./spec/schema.js";
 import { parseSpecText, specReport } from "./spec/validate.js";
 
@@ -54,6 +55,38 @@ server.registerTool(
   async ({ spec }) => {
     const report = specReport(parseSpecText(spec));
     return { content: [{ type: "text", text: JSON.stringify(report) }], structuredContent: report as Record<string, unknown> };
+  },
+);
+
+server.registerTool(
+  "prevue_register_design",
+  {
+    title: "Register a Prevue UI design",
+    description:
+      "Validates the specification, stores its normalized canonical form, and registers its hash as a new pending revision, which clears any earlier approval. " +
+      "It never approves: only the developer can, by typing `prevue approve <hash>`. Unlike prevue_validate_spec it changes state, so Prevue's gate only lets it run once a design is already approved. " +
+      "Registering an identical design is a no-op.",
+    inputSchema: { spec: z.string().max(10 * LIMITS.rawBytes).describe("The specification as JSON text (at most 64 KB)") },
+    outputSchema: {
+      registered: z.boolean(),
+      approvedByThisCall: z.literal(false),
+      outcome: z.enum(["created", "updated", "unchanged"]).optional(),
+      changed: z.boolean().optional(),
+      revision: z.number().optional(),
+      hash: z.string().optional(),
+      status: z.enum(["PENDING", "APPROVED"]).optional(),
+      design: z.enum(["written", "reused"]).optional(),
+      kind: z.enum(["parse_error", "schema_error", "config_error", "refused", "failed"]).optional(),
+      code: z.string().optional(),
+      message: z.string().optional(),
+      issues: z.array(issueShape).optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
+  // A refused or failed registration is a normal result with registered:false, so the caller can read the code.
+  async ({ spec }) => {
+    const { ok: _ok, ...result } = registerCanonical(process.env, spec);
+    return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result as Record<string, unknown> };
   },
 );
 

@@ -44,13 +44,16 @@ function snapshot(dir: string): string {
 test("MCP: the tool is listed with a read-only annotation, and there is no registration or approval tool", async () => {
   await withClient(undefined, async (c) => {
     const { tools } = await c.listTools();
-    assert.deepEqual(tools.map((t) => t.name).sort(), ["prevue_ping", "prevue_validate_spec"]);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ["prevue_ping", "prevue_register_design", "prevue_validate_spec"]);
     const t = tools.find((x) => x.name === "prevue_validate_spec")!;
     assert.equal(t.annotations?.readOnlyHint, true);
     assert.equal(t.annotations?.destructiveHint, false);
     assert.ok(t.outputSchema);
     assert.match(t.description ?? "", /not an approved design/);
-    assert.ok(!tools.some((x) => /register|approve|reset/i.test(x.name)));
+    assert.ok(!tools.some((x) => /approve|reset/i.test(x.name)));
+    const reg = tools.find((x) => x.name === "prevue_register_design")!;
+    assert.equal(reg.annotations?.readOnlyHint, false); // registration is not advertised as read-only
+    assert.match(reg.description ?? "", /never approves/);
   });
 });
 

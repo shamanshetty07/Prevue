@@ -64,6 +64,12 @@ async function main(): Promise<void> {
       let message: string;
       try {
         if (isApprove) {
+          // Do not record an approval the gate would then refuse to honour: a canonical revision must verify first.
+          const peek = load(dataDir, projectDir);
+          if (peek.status !== "INVALID" && peek.state.canonical) {
+            const c = (await loadVerifier())(dataDir, projectDir, peek.state);
+            if (!c.ok) throw new Error(`the stored design cannot be verified (${c.code}); nothing was approved`);
+          }
           const s = approve(dataDir, projectDir, isApprove[1]);
           message = `Prevue: design revision ${s.revision} (${s.designHash!.slice(0, 12)}) approved by the developer.`;
           if (s.canonical) {

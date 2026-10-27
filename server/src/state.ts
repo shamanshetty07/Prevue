@@ -55,14 +55,15 @@ export function paths(dataDir: string, projectDir: string) {
   return { dir, file: join(dir, "state.json"), lock: join(dir, "state.lock") };
 }
 
-const canonical = (v: unknown): string =>
+/** Key-sorted JSON: the exact text that is hashed, and that the canonical design file stores. */
+export const canonicalJson = (v: unknown): string =>
   JSON.stringify(v, (_k, val) =>
     val && typeof val === "object" && !Array.isArray(val)
       ? Object.fromEntries(Object.entries(val).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
       : val,
   );
 
-export const hashDesign = (spec: unknown): string => createHash("sha256").update(canonical(spec)).digest("hex");
+export const hashDesign = (spec: unknown): string => createHash("sha256").update(canonicalJson(spec)).digest("hex");
 
 const bad = (reason: string, missing = false): Loaded => ({ status: "INVALID", reason, missing });
 
@@ -117,7 +118,7 @@ function writeAtomic(file: string, s: GateState): void {
 const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 /** Serialize read-modify-write cycles across processes with an mkdir lock (atomic on POSIX). */
-function withLock<T>(dir: string, lock: string, fn: () => T): T {
+export function withLock<T>(dir: string, lock: string, fn: () => T): T {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const deadline = Date.now() + 5000;
   for (;;) {
@@ -157,8 +158,14 @@ export function initIfMissing(dataDir: string, projectDir: string): "created" | 
 
 /** Register the current design. Unchanged content is a no-op; any change bumps the revision and clears approval. */
 export function registerDesign(dataDir: string, projectDir: string, spec: unknown, opts: { canonical?: boolean } = {}): { state: GateState; changed: boolean } {
-  const { dir, file, lock } = paths(dataDir, projectDir);
-  return withLock(dir, lock, () => {
+  const { dir, lock } = paths(dataDir, projectDir);
+  return withLock(dir, lock, () => registerLocked(dataDir, projectDir, spec, opts));
+}
+
+/** The body of registerDesign for a caller that already holds the state lock (registration of a canonical design). */
+export function registerLocked(dataDir: string, projectDir: string, spec: unknown, opts: { canonical?: boolean } = {}): { state: GateState; changed: boolean } {
+  const { file } = paths(dataDir, projectDir);
+  {
     let cur = load(dataDir, projectDir);
     if (cur.status === "INVALID" && cur.missing) {
       writeAtomic(file, fresh(projectDir));
@@ -171,7 +178,7 @@ export function registerDesign(dataDir: string, projectDir: string, spec: unknow
     const next: GateState = { ...rest, revision: cur.state.revision + 1, designHash, approvedRevision: null, approvedHash: null, approvedAt: null, updatedAt: new Date().toISOString(), ...(opts.canonical ? { canonical: true as const } : {}) };
     writeAtomic(file, next);
     return { state: next, changed: true };
-  });
+  }
 }
 
 /** Approve the current revision. The hash prefix is mandatory so the developer approves the exact design they reviewed. */

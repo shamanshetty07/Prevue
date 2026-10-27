@@ -15,8 +15,10 @@ export type DesignFailure = "design_missing" | "design_untrusted" | "design_unre
 
 export const designFile = (dataDir: string, projectDir: string, hash: string): string => join(paths(dataDir, projectDir).dir, "designs", `${hash}.json`);
 
-export function verifyStoredDesign(dataDir: string, projectDir: string, state: GateState): DesignCheck {
-  const hash = state.designHash;
+export const verifyStoredDesign = (dataDir: string, projectDir: string, state: GateState): DesignCheck => verifyDesignFile(dataDir, projectDir, state.designHash);
+
+/** Verifies `designs/<hash>.json` against `hash` alone (used by the gate through the state, and by registration before it reuses a file). */
+export function verifyDesignFile(dataDir: string, projectDir: string, hash: string | null): DesignCheck {
   if (typeof hash !== "string" || !/^[0-9a-f]{64}$/.test(hash)) return { ok: false, code: "design_invalid" };
   const dir = join(paths(dataDir, projectDir).dir, "designs");
   const file = join(dir, `${hash}.json`);

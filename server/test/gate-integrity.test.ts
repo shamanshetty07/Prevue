@@ -276,7 +276,7 @@ test("integrity: verification never writes anything", () => {
   assert.deepEqual([readdirSync(dir), readdirSync(paths(s.data, s.project).dir).sort()], before);
 });
 
-test("integrity: the real hook process denies, reports INVALID at session start, and warns when the developer approves", () => {
+test("integrity: the real hook process denies, reports INVALID at session start, and rejects approval of an unverifiable revision", () => {
   const { s, file } = approvedCanonical();
   const ok = pre(s, "Write", w);
   assert.equal(ok.stdout, ""); // allowed
@@ -287,14 +287,15 @@ test("integrity: the real hook process denies, reports INVALID at session start,
   assert.match(denied.stdout, /design_invalid/);
   assert.match(start(s).stdout, /INVALID \(the approved design cannot be verified: design_invalid\)/);
 
-  // approving a revision whose stored design is broken is reported, and stays blocked
+  // approving a revision whose stored design is broken is rejected, and nothing is approved
   const t = sandbox();
   const f2 = store(t, A);
   registerDesign(t.data, t.project, A, { canonical: true });
   writeFileSync(f2, "{}");
   const out = prompt(t, `prevue approve ${hashDesign(A).slice(0, 12)}`).stdout;
-  assert.match(out, /approved by the developer/);
-  assert.match(out, /WARNING: the stored design cannot be verified \(design_invalid\)/);
+  assert.match(out, /REJECTED/);
+  assert.match(out, /cannot be verified \(design_invalid\); nothing was approved/);
+  assert.equal((load(t.data, t.project) as any).status, "PENDING");
   assert.match(pre(t, "Write", w).stdout, /"permissionDecision":"deny"/);
 });
 

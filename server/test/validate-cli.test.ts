@@ -245,7 +245,7 @@ test("a validated Phase 1a spec still registers as before and stays PENDING", ()
   assert.equal(reg.state.approvedRevision, null);
 });
 
-test("the validation path (spec modules, validate-cli, the MCP server) never imports state-changing, gate, hook or approval code", () => {
+test("the validation path (spec modules, validate-cli, the validate tool) never imports or calls state-changing, gate, hook or approval code", () => {
   const src = join(import.meta.dirname, "..", "src");
   const importsOf = (file: string) => {
     const text = readFileSync(join(src, file), "utf8");
@@ -253,7 +253,7 @@ test("the validation path (spec modules, validate-cli, the MCP server) never imp
   };
   const allowed: Record<string, string[]> = {
     "validate-cli.js": ["node:fs", "./spec/schema.js", "./spec/validate.js"],
-    "index.js": ["@modelcontextprotocol/sdk/server/mcp.js", "@modelcontextprotocol/sdk/server/stdio.js", "zod", "./spec/schema.js", "./spec/validate.js"],
+    "index.js": ["@modelcontextprotocol/sdk/server/mcp.js", "@modelcontextprotocol/sdk/server/stdio.js", "zod", "./register.js", "./spec/schema.js", "./spec/validate.js"],
     "spec/schema.js": ["zod"],
     "spec/validate.js": ["../state.js", "./schema.js", "./dupkeys.js"],
     "spec/dupkeys.js": [],
@@ -268,4 +268,10 @@ test("the validation path (spec modules, validate-cli, the MCP server) never imp
   // Only the CLI wrapper may touch the filesystem; the validation modules and the MCP server must not.
   for (const f of ["spec/schema.js", "spec/validate.js", "spec/dupkeys.js", "index.js"]) assert.ok(!/node:fs|node:child_process|node:net|node:http|fetch\(/.test(importsOf(f).text), `${f} uses fs/network`);
   assert.ok(existsSync(join(src, "validate-cli.js")));
+  // The MCP server now also exposes registration, so the validate tool is checked on its own: its handler must not reach it.
+  const idx = readFileSync(join(src, "index.js"), "utf8");
+  const start = idx.indexOf('"prevue_validate_spec"');
+  const block = idx.slice(start, idx.indexOf("server.registerTool(", start));
+  assert.ok(start > 0 && block.length > 100);
+  assert.ok(!/registerCanonical|registerDesign|process\.env/.test(block.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "").replace(/"[^"\n]*"/g, '""')), "the validate tool must not reach registration or the environment");
 });

@@ -27,7 +27,7 @@ cd ..
 claude plugin validate .
 ```
 
-The hooks and MCP entry point run from `server/dist/`, so the server must be built before the plugin is loaded. Packaging the build output for marketplace installs is deferred.
+The hooks and MCP entry point run from `server/dist/`, which is git-ignored, so the server must be built before the plugin is loaded (`npm run build` in `server/`; `npm test` also builds). In one isolated diagnostic, a missing compiled hook made Claude Code block a Write (`onFailure: "block"`), so an unbuilt checkout fails closed but can disrupt ordinary work while the plugin is enabled. Packaging the build output for marketplace installs is deferred.
 
 ## Gate in one paragraph
 
@@ -54,7 +54,7 @@ node /path/to/Prevue/server/dist/src/cli.js status "$PWD"
 
 Experiments (each run costs API tokens and uses throwaway directories):
 
-- `experiments/bypass-probe.sh` is the bounded `bypassPermissions` probe (Write tool only, hard limits). It has **not** been run against the hardened gate.
+- `experiments/bypass-probe.sh` is the bounded `bypassPermissions` probe (Write tool only, hard limits). Against the hardened gate, two unapproved-Write runs (A2a, A2b) were denied by Prevue in `bypassPermissions` mode; the approved control is only partly established (D0's allow is inferred, A1 was inconclusive). See [`docs/ENFORCEMENT.md`](docs/ENFORCEMENT.md) section 8 for scope and limits.
 - `experiments/run.sh` is the original Phase 0 runner and targets the old state layout; do not use it.
 
 ## Scope

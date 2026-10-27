@@ -1,6 +1,6 @@
 # Approval gate: design, evidence, limits
 
-Status: **hardened design implemented and unit-tested; not yet re-verified in a live Claude Code session.** Live evidence below was gathered against the earlier Phase 0 implementation and is labelled as such.
+Status: **hardened design implemented and unit-tested. Two live unapproved-Write treatment runs (A2a, A2b) against the hardened gate in `bypassPermissions` mode were denied by Prevue.** Evidence from the earlier Phase 0 implementation is labelled as such, and section 8 states what the live runs do and do not show.
 
 ## 1. Threat model
 
@@ -79,9 +79,9 @@ Not covered / unverified:
 - Anything that does not pass through `PreToolUse`: harness-run shell injection in skill content (`` !`cmd` ``), plugin-declared monitors, hooks in other plugins, the user's own `!` commands, MCP servers writing on their own behalf outside a tool call.
 - Interactive sessions (only non-interactive `claude -p` was exercised).
 - `auto` mode (the default in the author's environment) and `--dangerously-skip-permissions` as a separate flag.
-- Whether `CLAUDE_PLUGIN_DATA` is set for hooks in a real `--plugin-dir` session. The documentation says so and the directory `~/.claude/plugins/data/prevue-inline` exists after earlier sessions, but **the hardened hook has not run live**.
+- Interactive-mode behaviour of the hardened gate: the live runs were all non-interactive `claude -p`. (The hardened SessionStart and PreToolUse hooks did run live in the A2a/A2b/D0 runs, and the state they reported matched the state the harness had registered, so the data-directory assumption held there.)
 - Whether a `Monitor` output line or other self-started turn can emit text that matches the approval command (the command is matched against the whole prompt, which limits but does not exclude this).
-- Packaging: hooks and server run from `server/dist/`. If it is missing, `onFailure: "block"` is documented to block every tool call in every project. Not tested; needs a bundling decision before release.
+- Packaging: hooks and server run from `server/dist/`, which is git-ignored, so a fresh clone has no build output. In one isolated diagnostic (section 8) a missing compiled hook file failed closed for a Write, which means an unbuilt checkout can disrupt ordinary work while Prevue is enabled. A bundling or install-step decision is still needed before release.
 
 ## 8. Evidence
 
@@ -95,12 +95,33 @@ Mutation check (performed once, not part of the suite): reverting the revision r
 `experiments/results/` (older single-file state in the project tree, hash-only approval): Write denied while unapproved even with an allow rule; wrong-hash approval rejected; approval unlocked Write; design change revoked it; a prompt claiming approval had no effect; the agent could not edit the state file; a subagent's Write was denied; corrupt state failed closed; `disableAllHooks` bypassed the gate (expected, case C).
 `experiments/results/bypass-probe-run-20261026T175838Z/`: with `--permission-mode bypassPermissions`, an approved Write succeeded and two unapproved Writes were denied (3/3 as expected; Write tool only).
 
-These results are **not** re-established for the hardened code. `experiments/bypass-probe.sh` has been updated for the new state location but has not been run.
+The Phase 0 results above are **not** a substitute for the hardened-gate evidence below.
+
+### Live evidence against the hardened gate (`experiments/bypass-probe.sh`)
+
+Each run is one non-interactive `claude -p` session loaded through `--plugin-dir` (the actual plugin mechanism, not the project `.mcp.json` route), in `bypassPermissions` mode, with the Write tool only, a 120 s process-group timeout, 3 turns and a $0.25 cap, plus the harness's compensating guard (which permits the sentinel Write and never returns an allow decision). Details are in each directory's `evidence-*.json`.
+
+| Run | Directory under `experiments/results/` | Outcome |
+| --- | --- | --- |
+| A2a (unapproved) | `bypass-probe-a2a-20261026T200823Z` | PASS: Prevue's SessionStart output matched the registered PENDING state; the Write reached Prevue's PreToolUse hook and received an explicit `Prevue:` denial; sentinel absent |
+| A2b (unapproved) | `bypass-probe-a2b-20261027T033338Z` | PASS: same checks and result as A2a (state PENDING, revision 1, hash prefix `3c5279481529`) |
+| D0 (approved, dry control) | `bypass-probe-dry-20261026T194701Z` | PASS, with a caveat: the sentinel was created, but Prevue's allow is **inferred by elimination** (the second PreToolUse response carried no decision); hook events carry no command, so an explicit allow is not observable |
+| A1 (approved control) | `bypass-probe-run-20261026T191651Z` | **INCONCLUSIVE**: aborted before the prompt was sent because the interface does not emit `init` before the first prompt. No explicit hardened A1 live control has passed |
+
+The A1 result in `bypass-probe-run-20261026T175838Z` predates the hardened gate and applies to the earlier implementation only.
+
+Scope: A2a and A2b show that the tested Write operation was denied by Prevue's hook under `bypassPermissions`. They do not show that every execution path is impossible to bypass; the limits in sections 1, 4, 6 and 7 still apply (approval origin, same-user state tampering, shell-classifier heuristics, paths that bypass `PreToolUse`, interactive and `auto` mode).
+
+### Missing compiled hook: one isolated diagnostic (Claude Code 2.1.311, `claude -p`)
+
+A temporary copy of the plugin (unchanged `hooks/hooks.json`, no `server/`, a different plugin name so its data directory was separate) was loaded in `bypassPermissions` mode and asked to Write one sentinel. The configured PreToolUse command `node ${CLAUDE_PLUGIN_ROOT}/server/dist/src/hook.js` exited with code 1 (`MODULE_NOT_FOUND`). Claude Code reported `failed; blocking because onFailure is "block"`, returned an error for the Write, and the sentinel was not created. The SessionStart and UserPromptSubmit hooks, which have no `onFailure`, also exited 1 and the session continued.
+
+So, for this tested PreToolUse failure, a missing or unbuilt `server/dist` fails **closed**, but it can disrupt ordinary work in any project where Prevue is enabled. For an unbuilt checkout, run `npm run build` from the plugin repository (the `server` directory). This is a single diagnostic on one Claude Code version for one failure mode (missing file); it is not evidence about other hook failures (for example a timeout or a crash inside the hook) or other versions. A read-only tool call was not attempted in it. The diagnostic's output was not added to `experiments/results/`.
 
 ## 9. Open items
 
-1. Run the bounded probe against the hardened code (also confirms the data-directory assumption).
-2. Decide the packaging approach (committed bundle vs install step) and test the missing-`dist` failure mode.
+1. Obtain an explicit hardened approved-Write control (A1 is INCONCLUSIVE; D0's allow is inferred), and exercise interactive and `auto` mode.
+2. Decide the packaging approach (committed bundle vs install step). The missing-`dist` case fails closed for a Write (section 8) but blocks work until the build is run.
 3. Measure whether the skill is triggered, and whether self-started turns can forge `prevue approve`.
 4. Define how the developer configures extra read-only MCP tools.
 5. Real separation between agent and approval channel needs an OS boundary (for example Claude Code's sandbox for shell); a plugin alone cannot provide it.

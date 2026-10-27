@@ -1,4 +1,4 @@
-import { alwaysDenied, classifyPending, isInside, pathsIn, resolveReal } from "./classify.js";
+import { alwaysDenied, classifyPending, isInside, isPendingRegistration, pathsIn, resolveReal } from "./classify.js";
 import { load, normalizePath, type GateState, type GateStatus } from "./state.js";
 
 export interface GateEnv {
@@ -45,6 +45,10 @@ export function evaluate(env: GateEnv, toolName: unknown, toolInput: unknown): D
     }
     return { decision: "allow", status };
   }
+
+  // Design registration is the one state-changing tool allowed while PENDING (never INVALID): it proposes a design and
+  // cannot approve it, so the developer's approval of the exact hash is still required before anything is implemented.
+  if (status === "PENDING" && isPendingRegistration(toolName, toolInput)) return { decision: "allow", status };
 
   const v = classifyPending(toolName, toolInput);
   if (v.allow) return { decision: "allow", status };

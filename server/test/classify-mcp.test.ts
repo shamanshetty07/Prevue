@@ -46,7 +46,7 @@ test("classification: through the gate, while PENDING, only the exact Prevue too
   assert.equal(d(`${P}prevue_ping2`), "deny");
 });
 
-test("classification: prevue_register_design is state-changing, so it is never read-only; the gate decides it by state alone", () => {
+test("classification: prevue_register_design is state-changing and never read-only; the gate admits it only through its own PENDING rule", () => {
   const name = `${P}prevue_register_design`;
   assert.equal(allowed(name), false);
   assert.equal(allowed(name, { spec: "{}" }), false);
@@ -55,8 +55,8 @@ test("classification: prevue_register_design is state-changing, so it is never r
   const input = { spec: JSON.stringify({ schemaVersion: 1 }) };
   const s = sandbox(); // no state: INVALID
   assert.equal(evaluate(env(s), name, input).decision, "deny");
-  initIfMissing(s.data, s.project); // PENDING: denied until the developer approves
-  assert.equal(evaluate(env(s), name, input).decision, "deny");
+  initIfMissing(s.data, s.project); // PENDING: allowed by the dedicated rule (see pending-registration.test.ts), not by read-only status
+  assert.equal(evaluate(env(s), name, input).decision, "allow");
   assert.equal(evaluate(env(s), `${name}2`, input).decision, "deny");
   registerDesign(s.data, s.project, { v: "A" });
   approve(s.data, s.project, hashDesign({ v: "A" }).slice(0, 12)); // APPROVED: the existing policy allows tools, so registration can replace the design

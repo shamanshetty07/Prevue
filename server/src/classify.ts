@@ -21,6 +21,23 @@ const READ_ONLY_TOOLS = new Set([
 ]);
 /** Exact names only: sharing a prefix with an allowed tool grants nothing. A new Prevue tool is denied until it is added here. */
 const READ_ONLY_MCP = new Set(["mcp__plugin_prevue_prevue__prevue_ping", "mcp__plugin_prevue_prevue__prevue_validate_spec", "mcp__ide__getDiagnostics"]);
+/**
+ * The one state-changing tool the gate lets through while PENDING: it stores a validated design and records a new
+ * PENDING revision, and can never approve (approval exists only in the UserPromptSubmit hook). It is deliberately NOT in
+ * READ_ONLY_MCP, and the gate admits it only through isPendingRegistration, so it is never allowed for INVALID state.
+ */
+export const REGISTER_DESIGN_TOOL = "mcp__plugin_prevue_prevue__prevue_register_design";
+const MAX_SPEC_CHARS = 10 * 64 * 1024; // the tool's own input limit; the gate refuses anything larger before the server sees it
+
+/** Exact name, and an input that is exactly `{spec: <bounded string>}`: no other property can ride along. */
+export function isPendingRegistration(toolName: unknown, toolInput: unknown): boolean {
+  if (toolName !== REGISTER_DESIGN_TOOL) return false;
+  if (!toolInput || typeof toolInput !== "object" || Array.isArray(toolInput)) return false;
+  const keys = Object.keys(toolInput);
+  const spec = (toolInput as Record<string, unknown>).spec;
+  return keys.length === 1 && keys[0] === "spec" && typeof spec === "string" && spec.length <= MAX_SPEC_CHARS;
+}
+
 const SHELL_TOOLS = new Set(["Bash", "Monitor"]);
 const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 

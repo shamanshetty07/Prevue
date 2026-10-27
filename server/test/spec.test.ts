@@ -398,28 +398,15 @@ test("validation does not read or write the data directory", () => {
 test("the spec modules import only zod, the pure hash function and each other (no gate, hook, approve or filesystem access)", () => {
   const dir = join(import.meta.dirname, "..", "src", "spec");
   const files = readdirSync(dir).filter((f) => f.endsWith(".js"));
-  assert.deepEqual(files.sort(), ["schema.js", "validate.js"]);
+  assert.deepEqual(files.sort(), ["dupkeys.js", "schema.js", "validate.js"]);
   for (const f of files) {
     const src = readFileSync(join(dir, f), "utf8");
     const specs = [...src.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)].map((m) => m[1]);
-    for (const spec of specs) assert.ok(["zod", "../state.js", "./schema.js"].includes(spec), `${f} imports ${spec}`);
+    for (const spec of specs) assert.ok(["zod", "../state.js", "./schema.js", "./dupkeys.js"].includes(spec), `${f} imports ${spec}`);
     for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']\.\.\/state\.js["']/g)) assert.equal(m[1]!.trim(), "hashDesign");
     assert.ok(!/\b(approve|initIfMissing|registerDesign|reset|load)\b\s*\(/.test(src), `${f} calls state-changing or state-reading code`);
     assert.ok(!/node:fs|node:child_process|process\.env|fetch\(|http/.test(src), `${f} touches the filesystem, environment or network`);
   }
-});
-
-test("KNOWN LIMITATION: duplicate JSON object keys are not detected; the last one wins (JSON.parse behaviour)", () => {
-  // The hash and everything shown later come from the parsed (last-wins) value, so what is approved is what is rendered.
-  // The risk is a human reading the raw input text and seeing the earlier value. Persist and show the normalized spec only.
-  const dup = exampleText.replace('"name": "Expense dashboard"', '"name": "Innocent first value", "name": "Expense dashboard"');
-  assert.notEqual(dup, exampleText);
-  const r = parseSpecText(dup);
-  assert.equal(r.ok, true);
-  assert.equal((r as any).spec.screen.name, "Expense dashboard");
-  assert.equal((r as any).hash, EXAMPLE_HASH);
-  const reversed = parseSpecText(exampleText.replace('"name": "Expense dashboard"', '"name": "Expense dashboard", "name": "Last value wins"'));
-  assert.equal((reversed as any).spec.screen.name, "Last value wins");
 });
 
 test("parse errors never echo the input (V8 quotes a snippet of it in its own message)", () => {

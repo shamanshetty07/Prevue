@@ -66,7 +66,7 @@ Failure (an invalid spec is a normal result, not a tool error; there is no `spec
 { "valid": false, "registered": false, "approved": false, "kind": "parse_error | schema_error | file_error", "issues": [{ "path": "/layout/main/children/0/type", "code": "unknown_component", "message": "..." }] }
 ```
 
-`kind`: `parse_error` = not usable JSON (`invalid_json`, `too_large`, `too_complex`); `schema_error` = JSON that is not a valid spec; `file_error` = CLI only (`file_not_found`, `not_a_file`, `file_unreadable`, `too_large`, `invalid_encoding`). `path` is a JSON pointer.
+`kind`: `parse_error` = not usable JSON (`invalid_json`, `duplicate_key`, `too_large`, `too_complex`); `schema_error` = JSON that is not a valid spec; `file_error` = CLI only (`file_not_found`, `not_a_file`, `file_unreadable`, `too_large`, `invalid_encoding`). `path` is a JSON pointer.
 
 Common issues and fixes:
 - `missing_field` - add the required property named by `path`.
@@ -76,7 +76,8 @@ Common issues and fixes:
 - `limit_exceeded` - too many components, children, rows, columns or sidebar items, text too long, or containers nested too deep. Simplify.
 - `duplicate_id` - ids must be unique.
 - `unsupported_version` - `schemaVersion` must be `1`.
-- `invalid_json` - fix the syntax. Do not use duplicate object keys: they are not detected, and the last one silently wins.
+- `invalid_json` - fix the syntax.
+- `duplicate_key` - an object repeats a property name (after decoding escapes, so `"a"` and `"\u0061"` collide). Keep one; the path points at the repeated key.
 
 The hash is of the normalized spec (defaults filled in, text trimmed), so reordering keys or adding explicit defaults does not change it.
 

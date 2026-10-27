@@ -255,7 +255,8 @@ test("the validation path (spec modules, validate-cli, the MCP server) never imp
     "validate-cli.js": ["node:fs", "./spec/schema.js", "./spec/validate.js"],
     "index.js": ["@modelcontextprotocol/sdk/server/mcp.js", "@modelcontextprotocol/sdk/server/stdio.js", "zod", "./spec/schema.js", "./spec/validate.js"],
     "spec/schema.js": ["zod"],
-    "spec/validate.js": ["../state.js", "./schema.js"],
+    "spec/validate.js": ["../state.js", "./schema.js", "./dupkeys.js"],
+    "spec/dupkeys.js": [],
   };
   for (const [file, ok] of Object.entries(allowed)) {
     const { text, specs } = importsOf(file);
@@ -265,6 +266,6 @@ test("the validation path (spec modules, validate-cli, the MCP server) never imp
   }
   for (const m of importsOf("spec/validate.js").text.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']\.\.\/state\.js["']/g)) assert.equal(m[1]!.trim(), "hashDesign");
   // Only the CLI wrapper may touch the filesystem; the validation modules and the MCP server must not.
-  for (const f of ["spec/schema.js", "spec/validate.js", "index.js"]) assert.ok(!/node:fs|node:child_process|node:net|node:http|fetch\(/.test(importsOf(f).text), `${f} uses fs/network`);
+  for (const f of ["spec/schema.js", "spec/validate.js", "spec/dupkeys.js", "index.js"]) assert.ok(!/node:fs|node:child_process|node:net|node:http|fetch\(/.test(importsOf(f).text), `${f} uses fs/network`);
   assert.ok(existsSync(join(src, "validate-cli.js")));
 });

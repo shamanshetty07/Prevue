@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { isAbsolute } from "node:path";
 import { initIfMissing, load, registerDesign, reset } from "./state.js";
 import { validateCommand } from "./validate-cli.js";
 
@@ -12,14 +13,17 @@ import { validateCommand } from "./validate-cli.js";
  *   node dist/src/cli.js validate <spec.json|->      read-only schema validation; needs no CLAUDE_PLUGIN_DATA, never registers
  */
 const [cmd, arg, dirArg] = process.argv.slice(2);
-const data = process.env.CLAUDE_PLUGIN_DATA;
+// Same rule as the hook: an empty or relative CLAUDE_PLUGIN_DATA is unset, never resolved against the cwd, so the CLI
+// can only write state in the directory the hook reads.
+const rawData = process.env.CLAUDE_PLUGIN_DATA;
+const data = rawData && isAbsolute(rawData) ? rawData : undefined;
 const dir = (cmd === "register" ? dirArg : arg) ?? process.cwd();
 
 if (cmd === "validate") {
   process.exitCode = validateCommand(arg);
 } else {
   if (!data) {
-    console.error("CLAUDE_PLUGIN_DATA must be set");
+    console.error("CLAUDE_PLUGIN_DATA must be set to an absolute path");
     process.exit(64);
   }
   if (cmd === "register" && arg) {

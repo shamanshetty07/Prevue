@@ -90,6 +90,17 @@ test("MCP: malformed JSON is a normal result with kind parse_error, and the text
   });
 });
 
+test("MCP: a duplicate property name is a parse_error that names the path but not the values", async () => {
+  await withClient(undefined, async (c) => {
+    const res = await validate(c, exampleText.replace('"name": "Expense dashboard"', '"name": "FIRST-MARKER", "name": "Expense dashboard"'));
+    assert.notEqual(res.isError, true);
+    assert.equal(res.structuredContent.valid, false);
+    assert.equal(res.structuredContent.kind, "parse_error");
+    assert.deepEqual(res.structuredContent.issues.map((i: any) => [i.code, i.path]), [["duplicate_key", "/screen/name"]]);
+    assert.ok(!res.content[0].text.includes("FIRST-MARKER"));
+  });
+});
+
 test("MCP: a schema-invalid specification returns structured, bounded issues and no spec or hash", async () => {
   await withClient(undefined, async (c) => {
     const s = example();

@@ -1,4 +1,5 @@
 import { hashDesign } from "../state.js";
+import { scanDuplicateKeys } from "./dupkeys.js";
 import { LIMITS, SPEC_SCHEMA_VERSION, uiSpecSchema, type NodeSpec, type UiSpec } from "./schema.js";
 
 /**
@@ -47,7 +48,7 @@ export function specReport(r: SpecResult): SpecReport {
 /** A failure to obtain the text at all (CLI only); the message never contains a path or file content. */
 export const fileErrorReport = (code: string, message: string): SpecReport => ({ valid: false, registered: false, approved: false, kind: "file_error", issues: [{ path: "", code, message }] });
 
-/** Stages 1-3: size, JSON syntax, and an iterative complexity guard (so deep input cannot overflow the stack later). */
+/** Stages 1-3: size, JSON syntax, duplicate keys, and an iterative complexity guard (so deep input cannot overflow the stack later). */
 export function parseSpecText(text: string): SpecResult {
   if (typeof text !== "string") return parseError("invalid_json", "input is not text");
   if (Buffer.byteLength(text, "utf8") > LIMITS.rawBytes) return parseError("too_large", `input is larger than ${LIMITS.rawBytes} bytes`);
@@ -57,6 +58,10 @@ export function parseSpecText(text: string): SpecResult {
   } catch (e) {
     return e instanceof RangeError ? parseError("too_complex", "input is nested too deeply") : parseError("invalid_json", jsonSyntaxMessage(e));
   }
+  // JSON.parse keeps the last of two equal keys; reject them so the reviewed text and the hashed value cannot differ.
+  const dups = scanDuplicateKeys(text);
+  if (dups === "malformed") return parseError("invalid_json", "input is not valid JSON");
+  if (dups.length) return { ok: false, kind: "parse_error", issues: dups };
   return validateSpec(value);
 }
 

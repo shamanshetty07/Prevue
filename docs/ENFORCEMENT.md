@@ -38,7 +38,9 @@ A tool call that arrives when the file is missing is `INVALID`, not "gate off". 
 
 ## 4. Where state lives and how it is protected
 
-`${CLAUDE_PLUGIN_DATA}/projects/<sha256(real project path)[:32]>/state.json` (documented: the plugin's persistent data directory, exported to hook processes and MCP servers; it survives plugin updates and is deleted on uninstall).
+`${CLAUDE_PLUGIN_DATA}/projects/<sha256(real project path)[:32]>/state.json` (documented: the plugin's persistent data directory, exported to hook processes and MCP servers; it survives plugin updates and is deleted on uninstall). Observed, not only documented: in one isolated diagnostic (section 8) a plugin MCP server process received an absolute `CLAUDE_PLUGIN_DATA` equal to the value its plugin's hook received, plus `CLAUDE_PROJECT_DIR`.
+
+The developer CLI (`init`, `status`, `reset`, `register`) now applies the hook's rule: an unset, empty or relative `CLAUDE_PLUGIN_DATA` is rejected with exit 64 and writes nothing. Before this, the CLI accepted a relative value and wrote state under the current directory, a place the hook (which treats a relative value as unset and reports INVALID) would never read.
 
 - Moved out of the project tree, so ordinary project-file edits cannot reach it and a repository checkout cannot carry an approval.
 - Writes are atomic (temp file + rename) and serialized with a lock directory; stale locks (15 s) are broken. Concurrency is covered by tests using separate processes.
@@ -112,6 +114,18 @@ The A1 result in `bypass-probe-run-20261026T175838Z` predates the hardened gate 
 
 Scope: A2a and A2b show that the tested Write operation was denied by Prevue's hook under `bypassPermissions`. They do not show that every execution path is impossible to bypass; the limits in sections 1, 4, 6 and 7 still apply (approval origin, same-user state tampering, shell-classifier heuristics, paths that bypass `PreToolUse`, interactive and `auto` mode).
 
+### Specification validation (Phase 1a/1b): scope and limits
+
+The specification engine (`server/src/spec/`) and its two entry points (CLI `validate`, MCP tool `prevue_validate_spec`) are covered by deterministic tests: schema and limits, normalization and hashing, adversarial and oversized input, the duplicate-key scanner (escaped keys, nesting, arrays, malformed text, a deterministic fuzz), error messages that never echo input, CLI exit codes and file handling, and MCP-over-stdio behaviour. Further tests assert that validation leaves state byte-for-byte unchanged (even when the data directory is available), that the validation path imports no state-changing, gate, hook or approval code, and that `register`/`approve` behave as before.
+
+What this does and does not show. Validation is read-only and separate from the gate: it cannot register or approve a design, and a valid specification is not an approved design. It checks conformance to a schema, not design quality or renderer safety (there is no renderer yet). `register` still accepts arbitrary JSON. The gate treats every `mcp__plugin_prevue_prevue__*` tool as read-only, which is correct for validation but would be wrong for a future registration tool (see `docs/PHASE1C-DESIGN.md`). Validation behaviour was tested from a build in a temporary directory and against the real server over stdio, not inside a live Claude Code session.
+
+### MCP process environment: one isolated diagnostic (Claude Code 2.1.311, `claude -p`)
+
+A temporary plugin with a different name (`prevue-envdiag`) and a throwaway MCP server and SessionStart hook, in a temporary workspace, recorded only: whether `CLAUDE_PLUGIN_DATA` and `CLAUDE_PROJECT_DIR` were set, whether the data directory was absolute, its value, whether the project directory equalled the workspace, and the process working directory relative to the workspace. One run, about 3 seconds of session time, reported cost $0.0124, no tools. Result: the MCP server and the hook each received the same absolute `CLAUDE_PLUGIN_DATA` (`~/.claude/plugins/data/prevue-envdiag-inline`), each had `CLAUDE_PROJECT_DIR` equal to the workspace, and the MCP working directory was the workspace root.
+
+So for a `--plugin-dir` plugin, in a non-interactive session, an MCP server can reach the same state directory and project as the hook. Not established: marketplace installs (the data directory name may differ from `<name>-inline`), interactive sessions, other Claude Code versions, and a project opened from a subdirectory (the workspace was the root). The evidence record is outside the repository; it is not in `experiments/results/`.
+
 ### Missing compiled hook: one isolated diagnostic (Claude Code 2.1.311, `claude -p`)
 
 A temporary copy of the plugin (unchanged `hooks/hooks.json`, no `server/`, a different plugin name so its data directory was separate) was loaded in `bypassPermissions` mode and asked to Write one sentinel. The configured PreToolUse command `node ${CLAUDE_PLUGIN_ROOT}/server/dist/src/hook.js` exited with code 1 (`MODULE_NOT_FOUND`). Claude Code reported `failed; blocking because onFailure is "block"`, returned an error for the Write, and the sentinel was not created. The SessionStart and UserPromptSubmit hooks, which have no `onFailure`, also exited 1 and the session continued.
@@ -120,6 +134,7 @@ So, for this tested PreToolUse failure, a missing or unbuilt `server/dist` fails
 
 ## 9. Open items
 
+0. Phase 1c: persist the validated specification next to the state and register through a tool, as proposed in `docs/PHASE1C-DESIGN.md`. This needs a decision on the gate's handling of an APPROVED state without a verifiable stored specification, and narrowing the Prevue MCP read-only prefix rule in `classify.ts`.
 1. Obtain an explicit hardened approved-Write control (A1 is INCONCLUSIVE; D0's allow is inferred), and exercise interactive and `auto` mode.
 2. Decide the packaging approach (committed bundle vs install step). The missing-`dist` case fails closed for a Write (section 8) but blocks work until the build is run.
 3. Measure whether the skill is triggered, and whether self-started turns can forge `prevue approve`.

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "screen": { "kind": "dashboard", "name": "Expense dashboard", "purpose": "Show monthly spend at a glance and list recent expenses." },
+  "theme": { "mode": "light", "accent": "blue" },
+  "layout": {
+    "header": {
+      "type": "header",
+      "title": "Expenses",
+      "subtitle": "October",
+      "actions": [{ "type": "button", "label": "Add expense", "variant": "primary", "note": "Opens the add-expense form" }]
+    },
+    "sidebar": {
+      "type": "sidebar",
+      "title": "Menu",
+      "width": "normal",
+      "items": [
+        { "label": "Overview", "icon": "home", "active": true },
+        { "label": "Reports", "icon": "chart" },
+        { "label": "Settings", "icon": "settings" }
+      ]
+    },
+    "main": {
+      "gap": "md",
+      "padding": "lg",
+      "children": [
+        {
+          "type": "grid",
+          "columns": 3,
+          "gap": "md",
+          "children": [
+            { "type": "stat-card", "label": "Total spend", "value": "$4,210", "delta": { "text": "+6%", "trend": "up" } },
+            { "type": "stat-card", "label": "Largest category", "value": "Rent" },
+            { "type": "stat-card", "label": "Budget left", "value": "$790", "hint": "of $5,000" }
+          ]
+        },
+        { "type": "text", "content": "Recent expenses", "variant": "subheading" },
+        {
+          "type": "table",
+          "columns": [
+            { "key": "date", "header": "Date" },
+            { "key": "item", "header": "Item" },
+            { "key": "amount", "header": "Amount", "align": "end" }
+          ],
+          "rows": [
+            ["Oct 24", "Groceries", "$82.10"],
+            ["Oct 22", "Train pass", "$54.00"]
+          ]
+        }
+      ]
+    }
+  }
+}

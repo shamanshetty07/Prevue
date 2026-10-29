@@ -1,0 +1,24 @@
+{
+  "timestamp_utc": "20261027T152441Z",
+  "claude_version": "2.1.311 (Claude Code)",
+  "plugin_path": "/Users/shamanshetty/portfolio/projects/Prevue",
+  "plugin_loading": "claude -p --plugin-dir <repo root> (cwd = disposable workspace)",
+  "workspace": "/private/var/folders/0s/cpkkhn5966v9vgrlc7mh9h5r0000gn/T/prevue-live.1oa0jfw4",
+  "data_root": "/Users/shamanshetty/.claude/plugins/data/prevue-inline",
+  "project_key": "4a6a9c8ec783f9e0267a57e7503fecee",
+  "state_dir": "/Users/shamanshetty/.claude/plugins/data/prevue-inline/projects/4a6a9c8ec783f9e0267a57e7503fecee",
+  "head": "62e1724",
+  "git_status_before": "?? experiments/__pycache__/\n",
+  "hashes": {
+    "A": "d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39",
+    "B": "06810929a9ce75c0fe0dafc4ab8b4ce6f7af3fde6467e9e6d807448a598e800b"
+  },
+  "limits": "per session: 150 s wall clock, 2-6 turns, $0.25-$0.40 cap",
+  "buildcheck": {
+    "ok": true,
+    "compared": 13,
+    "differ": [],
+    "missing_in_dist": [],
+    "extra_in_dist": []
+  }
+}

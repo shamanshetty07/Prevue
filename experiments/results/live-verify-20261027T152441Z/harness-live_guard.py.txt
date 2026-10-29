@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Compensating guard for the Prevue live verification (hook command, JSON on stdin).
+
+Fail-closed PreToolUse barrier: denies every tool except an explicit allow-list for the session. It NEVER emits an allow
+decision (it is silent when it permits), so it cannot authorise anything Prevue denies and cannot stand in for Prevue's own
+verdict. Every PreToolUse input is appended to a trace file first. Any error exits 2 (blocks).
+
+usage: live_guard.py <trace_file> <workspace> <comma-separated allowed tools> <sentinel or ->
+"""
+import json, os, sys
+
+GUARD = "LiveGuard:"
+
+
+def main():
+    trace, ws, allowed, sentinel = sys.argv[1], sys.argv[2], set(filter(None, sys.argv[3].split(","))), sys.argv[4]
+    try:
+        obj = json.loads(sys.stdin.read(1_000_000))
+        if not isinstance(obj, dict):
+            raise RuntimeError("hook input is not a JSON object")
+        event = obj.get("hook_event_name")
+        if event == "SessionStart":
+            sys.stderr.write(GUARD + " active\n")
+            return
+        if event != "PreToolUse":
+            raise RuntimeError(f"unexpected hook event {event!r}")
+        tool, inp = obj.get("tool_name"), obj.get("tool_input")
+        permit, why = False, ""
+        if not isinstance(tool, str) or tool not in allowed:
+            why = f"tool {tool!r} is not allowed in this session"
+        elif not isinstance(inp, dict):
+            why = "tool input is not an object"
+        elif tool == "Write":
+            p, c = inp.get("file_path"), inp.get("content", "")
+            if not (set(inp) <= {"file_path", "content"} and isinstance(p, str) and isinstance(c, str) and len(c) <= 64):
+                why = "unexpected Write input"
+            elif sentinel == "-" or p != sentinel:  # exact string match: no traversal or alternate spelling
+                why = "path is not exactly this session's sentinel"
+            elif os.path.islink(p) or os.path.lexists(p) or os.path.dirname(p) != ws:
+                why = "sentinel exists, is a link, or is outside the workspace"
+            else:
+                permit, why = True, "exact sentinel Write"
+        else:
+            permit, why = True, "allow-listed tool"
+        with open(trace, "a") as f:
+            f.write(json.dumps({"guard": "permitted" if permit else "denied", "why": why, "tool": tool, "input": inp}) + "\n")
+        if permit:
+            sys.stderr.write(f"{GUARD} permitted ({why})\n")
+            return
+        sys.stderr.write(f"{GUARD} denied ({why})\n")
+        sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": f"{GUARD} {why}"}}))
+    except Exception as e:  # fail closed
+        sys.stderr.write(f"{GUARD} error ({e}); failing closed\n")
+        sys.exit(2)
+
+
+main()

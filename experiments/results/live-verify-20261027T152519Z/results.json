@@ -1,0 +1,507 @@
+{
+  "results": {
+    "Test A (initial registration while PENDING)": {
+      "verdict": "PASS",
+      "failed_checks": [],
+      "inconclusive_checks": [],
+      "notes": "",
+      "checks": [
+        {
+          "check": "A: session completed (exit 0, no timeout, no error)",
+          "ok": true,
+          "kind": "inc",
+          "detail": "exit=0 timeout=False err=False"
+        },
+        {
+          "check": "A: permission mode was bypassPermissions",
+          "ok": true,
+          "kind": "inc",
+          "detail": "bypassPermissions"
+        },
+        {
+          "check": "A: Prevue MCP server connected",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"name\": \"plugin:prevue:prevue\", \"status\": \"connected\", \"source\": \"plugin\"}]"
+        },
+        {
+          "check": "A: Prevue SessionStart output seen and equals expected state",
+          "ok": true,
+          "kind": "inc",
+          "detail": "{\"status\": \"PENDING\", \"revision\": 0, \"hash12\": null}"
+        },
+        {
+          "check": "A: the exact registration tool name is exposed in the live session",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"mcp__plugin_prevue_prevue__prevue_ping\", \"mcp__plugin_prevue_prevue__prevue_register_design\", \"mcp__plugin_prevue_prevue__prevue_validate_spec\"]"
+        },
+        {
+          "check": "A: validate then register were actually invoked, nothing else",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"mcp__plugin_prevue_prevue__prevue_validate_spec\", \"mcp__plugin_prevue_prevue__prevue_register_design\"]"
+        },
+        {
+          "check": "A: both tool results are successes",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[{\"is_error\": false, \"text\": \"{\\\"valid\\\":true,\\\"registered\\\":false,\\\"approved\\\":false,\\\"schemaVersion\\\":1,\\\"hash\\\":\\\"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39\\\",\\\"stats\\\":{\\\"nodes\\\":1,\\\"depth\\\":0},\\\"spec\\\":{\\\"schemaVersion\\\":1,\\\"screen\\\":{\\\"kind\\\":\\\"dashboard\\\",\\\"name\\\":\\\"Live test A\\\",\\\"purpose\\\":\\\"Harmless design for live verification\\\"},\\\"theme\\\":{\\\"mode\\\":\\\"light\\\",\\\"accent\\\":\\\"blue\\\"},\\\"layout\\\":{\\\"main\\\":{\\\"gap\\\":\\\"md\\\",\\\"padding\\\":\\\"md\\\",\\\"children\\\":[{\\\"type\\\":\\\"text\\\",\\\"content\\\":\\\"Hello A\\\",\\\"variant\\\":\\\"body\\\",\\\"tone\\\":\\\"default\\\"}]}}}}\"}, {\"is_error\": false, "
+        },
+        {
+          "check": "A: registration result says registered, not approved, PENDING, revision 1, correct hash",
+          "ok": true,
+          "kind": "fail",
+          "detail": "{\"registered\": true, \"approvedByThisCall\": false, \"outcome\": \"created\", \"changed\": true, \"revision\": 1, \"hash\": \"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39\", \"status\": \"PENDING\", \"design\": \"written\"}"
+        },
+        {
+          "check": "A: state file is PENDING at revision 1 with the design hash, canonical marker, no approval",
+          "ok": true,
+          "kind": "fail",
+          "detail": "{\"revision\": 1, \"designHash\": \"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39\", \"canonical\": true, \"approvedRevision\": null, \"approvedHash\": null, \"approvedAt\": null}"
+        },
+        {
+          "check": "A: Prevue's own status loader reports PENDING",
+          "ok": true,
+          "kind": "fail",
+          "detail": "{\"status\": \"PENDING\"}"
+        },
+        {
+          "check": "A: exactly one canonical design file, named by the hash",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39.json\"]"
+        },
+        {
+          "check": "A: stored content hashes (independent sorted-key SHA-256) to its name",
+          "ok": true,
+          "kind": "fail",
+          "detail": "d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39"
+        },
+        {
+          "check": "A: stored content passes Prevue validation and is the normalized spec",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        },
+        {
+          "check": "A: no project file was modified (workspace holds only the marker)",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[]"
+        },
+        {
+          "check": "A: Prevue did not deny any call in this session",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"guard-permit\", \"silent\", \"guard-permit\", \"silent\"]"
+        },
+        {
+          "check": "A: every PreToolUse call produced exactly guard-permit + silent Prevue response",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[\"guard-permit\", \"silent\", \"guard-permit\", \"silent\"]"
+        },
+        {
+          "check": "A: state was fresh before the session (no state directory existed)",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        }
+      ]
+    },
+    "Test B (protected write while PENDING)": {
+      "verdict": "PASS",
+      "failed_checks": [],
+      "inconclusive_checks": [],
+      "notes": "",
+      "checks": [
+        {
+          "check": "B: session completed (exit 0, no timeout, no error)",
+          "ok": true,
+          "kind": "inc",
+          "detail": "exit=0 timeout=False err=False"
+        },
+        {
+          "check": "B: permission mode was bypassPermissions",
+          "ok": true,
+          "kind": "inc",
+          "detail": "bypassPermissions"
+        },
+        {
+          "check": "B: Prevue MCP server connected",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"name\": \"plugin:prevue:prevue\", \"status\": \"connected\", \"source\": \"plugin\"}]"
+        },
+        {
+          "check": "B: Prevue SessionStart output seen and equals expected state",
+          "ok": true,
+          "kind": "inc",
+          "detail": "{\"status\": \"PENDING\", \"revision\": 1, \"hash12\": \"d4fe8175385f\"}"
+        },
+        {
+          "check": "B: Claude attempted the sentinel Write",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"file_path\": \"/private/var/folders/0s/cpkkhn5966v9vgrlc7mh9h5r0000gn/T/prevue-live.8jngri_1/sentinel-B.txt\", \"content\": \"probe\"}]"
+        },
+        {
+          "check": "B: the compensating guard permitted the Write (so it did not cause the denial)",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[[\"permitted\", \"exact sentinel Write\"]]"
+        },
+        {
+          "check": "B: EXPLICIT evidence: a Prevue PreToolUse hook response denied the call",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"class\": \"prevue-deny\", \"reason\": \"Prevue: Write blocked (Write modifies files). No design is approved. Ask the developer to review the design and type \\\"prevue approve <hash>\\\".\", \"stderr\": \"\"}]"
+        },
+        {
+          "check": "B: the denial names the PENDING state",
+          "ok": true,
+          "kind": "inc",
+          "detail": ""
+        },
+        {
+          "check": "B: the Write tool result was an error",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"is_error\": true, \"text\": \"PreToolUse:Write hook error: Prevue: Write blocked (Write modifies files). No design is approved. Ask the developer to review the design and type \\\"prevue approve <hash>\\\".\"}]"
+        },
+        {
+          "check": "B: sentinel file does not exist",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        },
+        {
+          "check": "B: state unchanged (byte-identical)",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        }
+      ]
+    },
+    "Test C1 (developer approval hook, prompt typed as the session's only prompt)": {
+      "verdict": "PASS",
+      "failed_checks": [],
+      "inconclusive_checks": [],
+      "notes": "Provenance: here the approve text is the entire argv prompt of a fresh `claude -p` session started by the operator; no model turn precedes it. This exercises the documented approval path. It does NOT show that a model-initiated turn cannot forge the same text (open item in ENFORCEMENT.md).",
+      "checks": [
+        {
+          "check": "C1: session completed (exit 0, no timeout, no error)",
+          "ok": true,
+          "kind": "inc",
+          "detail": "exit=0 timeout=False err=False"
+        },
+        {
+          "check": "C1: permission mode was bypassPermissions",
+          "ok": true,
+          "kind": "inc",
+          "detail": "bypassPermissions"
+        },
+        {
+          "check": "C1: Prevue MCP server connected",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"name\": \"plugin:prevue:prevue\", \"status\": \"connected\", \"source\": \"plugin\"}]"
+        },
+        {
+          "check": "C1: Prevue SessionStart output seen and equals expected state",
+          "ok": true,
+          "kind": "inc",
+          "detail": "{\"status\": \"PENDING\", \"revision\": 1, \"hash12\": \"d4fe8175385f\"}"
+        },
+        {
+          "check": "C1: the UserPromptSubmit hook responded and reported the approval",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"stdout\": \"\", \"exit\": 0}, {\"stdout\": \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"UserPromptSubmit\\\",\\\"additionalContext\\\":\\\"Prevue: design revision 1 (d4fe8175385f) approved by the developer.\\\"}}\", \"exit\": 0}]"
+        },
+        {
+          "check": "C1: state file is APPROVED for revision 1 and the exact registered hash",
+          "ok": true,
+          "kind": "inc",
+          "detail": "{\"revision\": 1, \"designHash\": \"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39\", \"approvedRevision\": 1, \"approvedHash\": \"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39\"}"
+        },
+        {
+          "check": "C1: Prevue's own loader reports APPROVED",
+          "ok": true,
+          "kind": "inc",
+          "detail": "\"APPROVED\""
+        },
+        {
+          "check": "C1: the session called no tools",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[]"
+        }
+      ]
+    },
+    "Test C2 (protected write after approval)": {
+      "verdict": "PASS",
+      "failed_checks": [],
+      "inconclusive_checks": [],
+      "notes": "Prevue's allow is inferred by elimination (hook events carry no decision for an allow); the Prevue SessionStart output reporting APPROVED plus the absence of a deny plus the completed write is the evidence.",
+      "checks": [
+        {
+          "check": "C2: session completed (exit 0, no timeout, no error)",
+          "ok": true,
+          "kind": "inc",
+          "detail": "exit=0 timeout=False err=False"
+        },
+        {
+          "check": "C2: permission mode was bypassPermissions",
+          "ok": true,
+          "kind": "inc",
+          "detail": "bypassPermissions"
+        },
+        {
+          "check": "C2: Prevue MCP server connected",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"name\": \"plugin:prevue:prevue\", \"status\": \"connected\", \"source\": \"plugin\"}]"
+        },
+        {
+          "check": "C2: Prevue SessionStart output seen and equals expected state",
+          "ok": true,
+          "kind": "inc",
+          "detail": "{\"status\": \"APPROVED\", \"revision\": 1, \"hash12\": \"d4fe8175385f\"}"
+        },
+        {
+          "check": "C2: Claude attempted the sentinel Write",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"file_path\": \"/private/var/folders/0s/cpkkhn5966v9vgrlc7mh9h5r0000gn/T/prevue-live.8jngri_1/sentinel-C.txt\", \"content\": \"probe\"}]"
+        },
+        {
+          "check": "C2: no Prevue denial",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"guard-permit\", \"silent\"]"
+        },
+        {
+          "check": "C2: INFERRED allow: one guard-permit + one silent (no-decision) Prevue response per call",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[\"guard-permit\", \"silent\"]"
+        },
+        {
+          "check": "C2: the Write completed and the sentinel exists with the requested content",
+          "ok": true,
+          "kind": "inc",
+          "detail": "'probe'"
+        },
+        {
+          "check": "C2: state still APPROVED for the same revision and hash",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        }
+      ]
+    },
+    "Test D1 (revision registered after approval)": {
+      "verdict": "PASS",
+      "failed_checks": [],
+      "inconclusive_checks": [],
+      "notes": "",
+      "checks": [
+        {
+          "check": "D1: session completed (exit 0, no timeout, no error)",
+          "ok": true,
+          "kind": "inc",
+          "detail": "exit=0 timeout=False err=False"
+        },
+        {
+          "check": "D1: permission mode was bypassPermissions",
+          "ok": true,
+          "kind": "inc",
+          "detail": "bypassPermissions"
+        },
+        {
+          "check": "D1: Prevue MCP server connected",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"name\": \"plugin:prevue:prevue\", \"status\": \"connected\", \"source\": \"plugin\"}]"
+        },
+        {
+          "check": "D1: Prevue SessionStart output seen and equals expected state",
+          "ok": true,
+          "kind": "inc",
+          "detail": "{\"status\": \"APPROVED\", \"revision\": 1, \"hash12\": \"d4fe8175385f\"}"
+        },
+        {
+          "check": "D1: validate then register were invoked through MCP",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"mcp__plugin_prevue_prevue__prevue_validate_spec\", \"mcp__plugin_prevue_prevue__prevue_register_design\"]"
+        },
+        {
+          "check": "D1: registration result: revision 2, PENDING, not approved, new hash",
+          "ok": true,
+          "kind": "fail",
+          "detail": "{\"registered\": true, \"approvedByThisCall\": false, \"outcome\": \"updated\", \"changed\": true, \"revision\": 2, \"hash\": \"06810929a9ce75c0fe0dafc4ab8b4ce6f7af3fde6467e9e6d807448a598e800b\", \"status\": \"PENDING\", \"design\": \"written\"}"
+        },
+        {
+          "check": "D1: state: revision 2 for the new hash, approval cleared",
+          "ok": true,
+          "kind": "fail",
+          "detail": "{\"revision\": 2, \"designHash\": \"06810929a9ce75c0fe0dafc4ab8b4ce6f7af3fde6467e9e6d807448a598e800b\", \"approvedRevision\": null, \"approvedHash\": null}"
+        },
+        {
+          "check": "D1: Prevue's own loader reports PENDING",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        },
+        {
+          "check": "D1: both designs are stored, the first untouched",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"06810929a9ce75c0fe0dafc4ab8b4ce6f7af3fde6467e9e6d807448a598e800b.json\", \"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39.json\"]"
+        },
+        {
+          "check": "D1: no Prevue denial of the registration while APPROVED",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"guard-permit\", \"silent\", \"guard-permit\", \"silent\"]"
+        }
+      ]
+    },
+    "Test D2 (protected write after revision)": {
+      "verdict": "PASS",
+      "failed_checks": [],
+      "inconclusive_checks": [],
+      "notes": "",
+      "checks": [
+        {
+          "check": "D2: session completed (exit 0, no timeout, no error)",
+          "ok": true,
+          "kind": "inc",
+          "detail": "exit=0 timeout=False err=False"
+        },
+        {
+          "check": "D2: permission mode was bypassPermissions",
+          "ok": true,
+          "kind": "inc",
+          "detail": "bypassPermissions"
+        },
+        {
+          "check": "D2: Prevue MCP server connected",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"name\": \"plugin:prevue:prevue\", \"status\": \"connected\", \"source\": \"plugin\"}]"
+        },
+        {
+          "check": "D2: Prevue SessionStart output seen and equals expected state",
+          "ok": true,
+          "kind": "inc",
+          "detail": "{\"status\": \"PENDING\", \"revision\": 2, \"hash12\": \"06810929a9ce\"}"
+        },
+        {
+          "check": "D2: Claude attempted the sentinel Write",
+          "ok": true,
+          "kind": "inc",
+          "detail": ""
+        },
+        {
+          "check": "D2: the guard permitted the Write (did not cause the denial)",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[[\"permitted\", \"exact sentinel Write\"]]"
+        },
+        {
+          "check": "D2: EXPLICIT evidence: a Prevue PreToolUse hook response denied the call",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"class\": \"prevue-deny\", \"reason\": \"Prevue: Write blocked (Write modifies files). No design is approved. Ask the developer to review the design and type \\\"prevue approve <hash>\\\".\", \"stderr\": \"\"}]"
+        },
+        {
+          "check": "D2: the Write result was an error",
+          "ok": true,
+          "kind": "inc",
+          "detail": ""
+        },
+        {
+          "check": "D2: sentinel does not exist",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        },
+        {
+          "check": "D2: state unchanged and still unapproved",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        },
+        {
+          "check": "D2: the old approval was not reused (the first sentinel still exists, the second does not)",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        }
+      ]
+    }
+  },
+  "git_status_after": "?? experiments/__pycache__/\n",
+  "dist_unchanged_by_run": true,
+  "total_cost_usd": 0.0836,
+  "sessions": {
+    "A": {
+      "exit": 0,
+      "timed_out": false,
+      "wall_s": 12.9,
+      "num_turns": 3,
+      "duration_ms": 11933,
+      "total_cost_usd": 0.021398600000000004,
+      "result_subtype": "success"
+    },
+    "B": {
+      "exit": 0,
+      "timed_out": false,
+      "wall_s": 6.2,
+      "num_turns": 2,
+      "duration_ms": 4840,
+      "total_cost_usd": 0.023177299999999998,
+      "result_subtype": "success"
+    },
+    "C1": {
+      "exit": 0,
+      "timed_out": false,
+      "wall_s": 7.8,
+      "num_turns": 1,
+      "duration_ms": 6777,
+      "total_cost_usd": 0.0050993,
+      "result_subtype": "success"
+    },
+    "C2": {
+      "exit": 0,
+      "timed_out": false,
+      "wall_s": 8.7,
+      "num_turns": 2,
+      "duration_ms": 7623,
+      "total_cost_usd": 0.009581,
+      "result_subtype": "success"
+    },
+    "D1": {
+      "exit": 0,
+      "timed_out": false,
+      "wall_s": 12.1,
+      "num_turns": 3,
+      "duration_ms": 11098,
+      "total_cost_usd": 0.0146471,
+      "result_subtype": "success"
+    },
+    "D2": {
+      "exit": 0,
+      "timed_out": false,
+      "wall_s": 5.6,
+      "num_turns": 2,
+      "duration_ms": 4103,
+      "total_cost_usd": 0.0097142,
+      "result_subtype": "success"
+    }
+  }
+}

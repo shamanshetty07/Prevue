@@ -1,0 +1,44 @@
+{
+  "name": "C1-approve",
+  "exit": 0,
+  "timed_out": false,
+  "group_alive_after": false,
+  "wall_s": 7.8,
+  "result_subtype": "success",
+  "is_error": false,
+  "num_turns": 1,
+  "duration_ms": 6777,
+  "total_cost_usd": 0.0050993,
+  "permission_mode": "bypassPermissions",
+  "tools": [
+    "mcp__plugin_prevue_prevue__prevue_ping",
+    "mcp__plugin_prevue_prevue__prevue_register_design",
+    "mcp__plugin_prevue_prevue__prevue_validate_spec"
+  ],
+  "mcp_servers": [
+    {
+      "name": "plugin:prevue:prevue",
+      "status": "connected",
+      "source": "plugin"
+    }
+  ],
+  "session_start": {
+    "status": "PENDING",
+    "revision": 1,
+    "hash12": "d4fe8175385f",
+    "context": "Prevue gate: PENDING, design revision 1 (hash d4fe8175385f). File-modifying and unclassified tools are blocked until the developer approves a design by typing \"prevue approve <hash>\". Do not try to work around a Prevue denial."
+  },
+  "tool_calls": [],
+  "pretool": [],
+  "userpromptsubmit": [
+    {
+      "stdout": "",
+      "exit": 0
+    },
+    {
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"Prevue: design revision 1 (d4fe8175385f) approved by the developer.\"}}",
+      "exit": 0
+    }
+  ],
+  "guard_trace": []
+}

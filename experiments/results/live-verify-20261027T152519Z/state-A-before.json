@@ -1,0 +1,11 @@
+{
+  "label": "A-before",
+  "state_file": null,
+  "cli_status": {
+    "status": "INVALID",
+    "reason": "state file is missing",
+    "missing": true
+  },
+  "designs": [],
+  "workspace": []
+}

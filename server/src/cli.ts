@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
+import { previewCommand } from "./preview-cli.js";
 import { registerCanonical } from "./register.js";
 import { initIfMissing, load, registerDesign, reset } from "./state.js";
 import { readSpecInput } from "./validate-cli.js";
@@ -15,6 +16,8 @@ import { validateCommand } from "./validate-cli.js";
  *   CLAUDE_PLUGIN_DATA=<dir> node dist/src/cli.js register-design <spec.json|-> [projectDir]
  *       validates, stores the canonical design and registers it as a new PENDING revision; never approves.
  *       exit 0 registered (or unchanged), 1 invalid specification, 2 input file error, 3 refused or failed, 64 usage/configuration
+ *   CLAUDE_PLUGIN_DATA=<dir> node dist/src/cli.js preview [projectDir] [--port N]
+ *       read-only browser preview of the current registered design (127.0.0.1, per-launch token); exit 2 if the app is not built
  *   node dist/src/cli.js validate <spec.json|->      read-only schema validation; needs no CLAUDE_PLUGIN_DATA, never registers
  */
 const [cmd, arg, dirArg] = process.argv.slice(2);
@@ -46,6 +49,8 @@ if (cmd === "validate") {
   } else if (cmd === "register" && arg) {
     const r = registerDesign(data, dir, JSON.parse(readFileSync(arg === "-" ? 0 : arg, "utf8")));
     console.log(JSON.stringify(r));
+  } else if (cmd === "preview") {
+    process.exitCode = await previewCommand(data, process.argv.slice(3));
   } else if (cmd === "init") {
     console.log(initIfMissing(data, dir));
   } else if (cmd === "status") {

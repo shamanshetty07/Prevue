@@ -1,6 +1,6 @@
 # Prevue (Phase 0 gate + Phase 1 specification validation)
 
-Prevue is a local-first Claude Code plugin that will let a developer preview and approve an AI-generated UI design before Claude implements it. This repository has three parts so far: the **Phase 0** approval gate, which measures how far a plugin can enforce "no implementation before approval"; **Phase 1a/1b**, a UI specification format with a validator (CLI and MCP tool); and **Phase 1c**, registration of a validated specification with canonical storage. **Not implemented:** preview rendering, a visual editor, design comparison, pruning of stored designs. A valid or registered specification is not an approved design.
+Prevue is a local-first Claude Code plugin that will let a developer preview and approve an AI-generated UI design before Claude implements it. This repository has three parts so far: the **Phase 0** approval gate, which measures how far a plugin can enforce "no implementation before approval"; **Phase 1a/1b**, a UI specification format with a validator (CLI and MCP tool); and **Phase 1c**, registration of a validated specification with canonical storage. and a **read-only browser preview** (React + Vite) of the current registered design, with click-to-select and a read-only property inspector. **Not implemented:** a visual editor (drag-and-drop, property editing, undo), browser-based approval, design comparison, pruning of stored designs. A valid or registered specification is not an approved design.
 
 ## What is in the repository
 
@@ -11,6 +11,7 @@ Prevue is a local-first Claude Code plugin that will let a developer preview and
 | MCP server | `server/src/index.ts`, `.mcp.json` | stdio server exposing `prevue_ping`, the read-only `prevue_validate_spec`, and the state-changing `prevue_register_design` |
 | Specification format | `server/src/spec/` | Zod schema (version 1), normalization, limits, duplicate-key check, hashing |
 | Registration | `server/src/register.ts`, `server/src/runtime.ts`, `server/src/design-store.ts` | Canonical design storage, registration core, stored-design verification (used by the gate) |
+| Preview | `preview/` (renderer, app), `server/src/preview-*.ts` | Read-only browser preview: `cli.js preview` serves the registered design on 127.0.0.1; see [`docs/PREVIEW.md`](docs/PREVIEW.md) |
 | CLI | `server/src/cli.ts`, `server/src/validate-cli.ts` | `validate <file>` (`-` = stdin), `register-design <file>`; also the developer stand-ins `init`/`status`/`reset`/`register` |
 | Approval state | `server/src/state.ts` | PENDING / APPROVED / INVALID state machine, revisions, locking |
 | Tool policy | `server/src/classify.ts`, `server/src/gate.ts` | Read-only allowlist, shell classifier, allow/deny decision |
@@ -28,6 +29,8 @@ npm ci
 npm test            # builds, then runs the unit, MCP-over-stdio and config tests
 cd ..
 claude plugin validate .
+# the browser preview is a separate package (optional; only `prevue preview` needs it):
+(cd preview && npm ci && npm test && npm run build)   # tests, then builds preview/dist (git-ignored)
 ```
 
 The hooks, the MCP server and the CLI run from `server/dist/`, which is git-ignored, so a fresh checkout has no compiled code and the server **must be built before the plugin is loaded**: `cd server && npm ci && npm run build` (`npm test` also builds). A `dist/` built before Phase 1b has neither the `validate` command nor the `prevue_validate_spec` tool; rebuild after updating. In one isolated diagnostic, a missing compiled hook made Claude Code block a Write (`onFailure: "block"`), so an unbuilt checkout fails closed but can disrupt ordinary work while the plugin is enabled. Packaging the build output for marketplace installs is deferred.
@@ -53,6 +56,10 @@ Prints one JSON line (`registered`, `outcome` created/updated/unchanged, `revisi
 **Approval** happens only when the developer types `prevue approve <hash>` (handled by the `UserPromptSubmit` hook; there is no approve tool or CLI command, but the hook cannot prove who typed the prompt, see ENFORCEMENT.md), and it is refused for a canonical revision whose stored design cannot be verified. With the marker present, the gate re-verifies the stored design on every guarded call and blocks implementation if it is missing, corrupt, invalid, a different design, or a symlink. Each project keeps at most 50 stored designs; a new design beyond that is refused and nothing is deleted. Recovery is `prevue reset` (developer only). Details: [`docs/PHASE1C-DESIGN.md`](docs/PHASE1C-DESIGN.md), [`docs/ENFORCEMENT.md`](docs/ENFORCEMENT.md).
 
 Current limitations: one screen kind (`dashboard`); `prevue_validate_spec` is permitted while the gate is PENDING because it is on the gate's exact-name read-only list (`prevue_ping`, `prevue_validate_spec`); `prevue_register_design` changes state, so it is **not** on the read-only list; the gate admits it through a separate exact rule (state PENDING or APPROVED, never INVALID, input exactly `{spec: string}`), which lets Claude register a design while PENDING without being able to approve it; any other Prevue tool is denied until added deliberately; registration and the gate were tested through unit, process and MCP-over-stdio tests, not inside a live Claude Code session; interactive mode and marketplace installs are untested; the CLI cannot be run by Claude while the gate is PENDING (shell commands are not on the read-only list), so Claude validates through the MCP tool.
+
+## Preview (read-only)
+
+`CLAUDE_PLUGIN_DATA=<absolute dir> node server/dist/src/cli.js preview [projectDir]` serves a browser view of the current registered design (build it first with `npm run build` in `preview/`). It renders the real specification through an explicit component registry, shows revision, hash and approval state, and has desktop, tablet and mobile views. Clicking a component selects it (by structural path) and shows its schema properties in a read-only inspector; selection is browser-only state. It cannot register or approve anything and reads only the design the state points at, through the gate's integrity checks; the local server binds to 127.0.0.1, refuses foreign Host and Origin headers, and needs a per-launch token. Architecture, trust boundary and limits: [`docs/PREVIEW.md`](docs/PREVIEW.md). Approval still happens only by typing `prevue approve <hash>` in Claude Code.
 
 ## Gate in one paragraph
 
@@ -88,4 +95,4 @@ Experiments (each run costs API tokens and uses throwaway directories):
 
 ## Scope
 
-Not built yet: preview rendering, pruning of stored designs, React/Vite, visual editing, persistence beyond one state file and the stored canonical designs, auth, marketplace publication, and agents other than Claude Code.
+Not built yet: visual editing (drag-and-drop, property editing, undo), browser-based approval, pruning of stored designs, persistence beyond one state file and the stored canonical designs, auth, marketplace publication, and agents other than Claude Code.

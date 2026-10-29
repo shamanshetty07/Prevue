@@ -1,0 +1,130 @@
+{
+  "results": {
+    "Test A (initial registration while PENDING)": {
+      "verdict": "INCONCLUSIVE",
+      "failed_checks": [],
+      "inconclusive_checks": [
+        "A: every PreToolUse call produced exactly guard-permit + silent Prevue response"
+      ],
+      "notes": "",
+      "checks": [
+        {
+          "check": "A: session completed (exit 0, no timeout, no error)",
+          "ok": true,
+          "kind": "inc",
+          "detail": "exit=0 timeout=False err=False"
+        },
+        {
+          "check": "A: permission mode was bypassPermissions",
+          "ok": true,
+          "kind": "inc",
+          "detail": "bypassPermissions"
+        },
+        {
+          "check": "A: Prevue MCP server connected",
+          "ok": true,
+          "kind": "inc",
+          "detail": "[{\"name\": \"plugin:prevue:prevue\", \"status\": \"connected\", \"source\": \"plugin\"}, {\"name\": \"claude.ai Claude Docs\", \"status\": \"connected\", \"source\": \"claudeai\"}, {\"name\": \"claude.ai Google Drive\", \"status\": \"connected\", \"source\": \"claudeai\"}]"
+        },
+        {
+          "check": "A: Prevue SessionStart output seen and equals expected state",
+          "ok": true,
+          "kind": "inc",
+          "detail": "{\"status\": \"PENDING\", \"revision\": 0, \"hash12\": null}"
+        },
+        {
+          "check": "A: the exact registration tool name is exposed in the live session",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"mcp__plugin_prevue_prevue__prevue_ping\", \"mcp__plugin_prevue_prevue__prevue_register_design\", \"mcp__plugin_prevue_prevue__prevue_validate_spec\"]"
+        },
+        {
+          "check": "A: validate then register were actually invoked, nothing else",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"mcp__plugin_prevue_prevue__prevue_validate_spec\", \"mcp__plugin_prevue_prevue__prevue_register_design\"]"
+        },
+        {
+          "check": "A: both tool results are successes",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[{\"is_error\": false, \"text\": \"{\\\"valid\\\":true,\\\"registered\\\":false,\\\"approved\\\":false,\\\"schemaVersion\\\":1,\\\"hash\\\":\\\"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39\\\",\\\"stats\\\":{\\\"nodes\\\":1,\\\"depth\\\":0},\\\"spec\\\":{\\\"schemaVersion\\\":1,\\\"screen\\\":{\\\"kind\\\":\\\"dashboard\\\",\\\"name\\\":\\\"Live test A\\\",\\\"purpose\\\":\\\"Harmless design for live verification\\\"},\\\"theme\\\":{\\\"mode\\\":\\\"light\\\",\\\"accent\\\":\\\"blue\\\"},\\\"layout\\\":{\\\"main\\\":{\\\"gap\\\":\\\"md\\\",\\\"padding\\\":\\\"md\\\",\\\"children\\\":[{\\\"type\\\":\\\"text\\\",\\\"content\\\":\\\"Hello A\\\",\\\"variant\\\":\\\"body\\\",\\\"tone\\\":\\\"default\\\"}]}}}}\"}, {\"is_error\": false, "
+        },
+        {
+          "check": "A: registration result says registered, not approved, PENDING, revision 1, correct hash",
+          "ok": true,
+          "kind": "fail",
+          "detail": "{\"registered\": true, \"approvedByThisCall\": false, \"outcome\": \"created\", \"changed\": true, \"revision\": 1, \"hash\": \"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39\", \"status\": \"PENDING\", \"design\": \"written\"}"
+        },
+        {
+          "check": "A: state file is PENDING at revision 1 with the design hash, canonical marker, no approval",
+          "ok": true,
+          "kind": "fail",
+          "detail": "{\"revision\": 1, \"designHash\": \"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39\", \"canonical\": true, \"approvedRevision\": null, \"approvedHash\": null, \"approvedAt\": null}"
+        },
+        {
+          "check": "A: Prevue's own status loader reports PENDING",
+          "ok": true,
+          "kind": "fail",
+          "detail": "{\"status\": \"PENDING\"}"
+        },
+        {
+          "check": "A: exactly one canonical design file, named by the hash",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39.json\"]"
+        },
+        {
+          "check": "A: stored content hashes (independent sorted-key SHA-256) to its name",
+          "ok": true,
+          "kind": "fail",
+          "detail": "d4fe8175385f0a9a49b7e3ee57d3401a3ede88a2cbfc36bb9b358a6a09360c39"
+        },
+        {
+          "check": "A: stored content passes Prevue validation and is the normalized spec",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        },
+        {
+          "check": "A: no project file was modified (workspace holds only the marker)",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[]"
+        },
+        {
+          "check": "A: Prevue did not deny any call in this session",
+          "ok": true,
+          "kind": "fail",
+          "detail": "[\"silent\", \"silent\", \"silent\", \"silent\"]"
+        },
+        {
+          "check": "A: every PreToolUse call produced exactly guard-permit + silent Prevue response",
+          "ok": false,
+          "kind": "inc",
+          "detail": "[\"silent\", \"silent\", \"silent\", \"silent\"]"
+        },
+        {
+          "check": "A: state was fresh before the session (no state directory existed)",
+          "ok": true,
+          "kind": "fail",
+          "detail": ""
+        }
+      ]
+    }
+  },
+  "git_status_after": "?? experiments/__pycache__/\n",
+  "dist_unchanged_by_run": true,
+  "total_cost_usd": 0.0278,
+  "sessions": {
+    "A": {
+      "exit": 0,
+      "timed_out": false,
+      "wall_s": 8.7,
+      "num_turns": 3,
+      "duration_ms": 6032,
+      "total_cost_usd": 0.027765799999999997,
+      "result_subtype": "success"
+    }
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "name": "B-write-pending",
+  "exit": 0,
+  "timed_out": false,
+  "group_alive_after": false,
+  "wall_s": 6.2,
+  "result_subtype": "success",
+  "is_error": false,
+  "num_turns": 2,
+  "duration_ms": 4840,
+  "total_cost_usd": 0.023177299999999998,
+  "permission_mode": "bypassPermissions",
+  "tools": [
+    "Write",
+    "mcp__plugin_prevue_prevue__prevue_ping",
+    "mcp__plugin_prevue_prevue__prevue_register_design",
+    "mcp__plugin_prevue_prevue__prevue_validate_spec"
+  ],
+  "mcp_servers": [
+    {
+      "name": "plugin:prevue:prevue",
+      "status": "connected",
+      "source": "plugin"
+    }
+  ],
+  "session_start": {
+    "status": "PENDING",
+    "revision": 1,
+    "hash12": "d4fe8175385f",
+    "context": "Prevue gate: PENDING, design revision 1 (hash d4fe8175385f). File-modifying and unclassified tools are blocked until the developer approves a design by typing \"prevue approve <hash>\". Do not try to work around a Prevue denial."
+  },
+  "tool_calls": [
+    {
+      "name": "Write",
+      "input": {
+        "file_path": "/private/var/folders/0s/cpkkhn5966v9vgrlc7mh9h5r0000gn/T/prevue-live.8jngri_1/sentinel-B.txt",
+        "content": "probe"
+      },
+      "result": {
+        "is_error": true,
+        "text": "PreToolUse:Write hook error: Prevue: Write blocked (Write modifies files). No design is approved. Ask the developer to review the design and type \"prevue approve <hash>\"."
+      }
+    }
+  ],
+  "pretool": [
+    {
+      "class": "guard-permit",
+      "reason": null,
+      "stderr": "LiveGuard: permitted (exact sentinel Write)\n"
+    },
+    {
+      "class": "prevue-deny",
+      "reason": "Prevue: Write blocked (Write modifies files). No design is approved. Ask the developer to review the design and type \"prevue approve <hash>\".",
+      "stderr": ""
+    }
+  ],
+  "userpromptsubmit": [
+    {
+      "stdout": "",
+      "exit": 0
+    },
+    {
+      "stdout": "",
+      "exit": 0
+    }
+  ],
+  "guard_trace": [
+    {
+      "guard": "permitted",
+      "why": "exact sentinel Write",
+      "tool": "Write",
+      "input": {
+        "file_path": "/private/var/folders/0s/cpkkhn5966v9vgrlc7mh9h5r0000gn/T/prevue-live.8jngri_1/sentinel-B.txt",
+        "content": "probe"
+      }
+    }
+  ]
+}

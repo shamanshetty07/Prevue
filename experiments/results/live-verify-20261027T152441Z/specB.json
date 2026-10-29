@@ -1,0 +1,1 @@
+{"schemaVersion":1,"screen":{"kind":"dashboard","name":"Live test B","purpose":"Harmless design for live verification"},"theme":{"mode":"light"},"layout":{"main":{"children":[{"type":"text","content":"Hello B"}]}}}

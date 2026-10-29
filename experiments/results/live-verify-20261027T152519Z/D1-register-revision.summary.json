@@ -1,0 +1,103 @@
+{
+  "name": "D1-register-revision",
+  "exit": 0,
+  "timed_out": false,
+  "group_alive_after": false,
+  "wall_s": 12.1,
+  "result_subtype": "success",
+  "is_error": false,
+  "num_turns": 3,
+  "duration_ms": 11098,
+  "total_cost_usd": 0.0146471,
+  "permission_mode": "bypassPermissions",
+  "tools": [
+    "mcp__plugin_prevue_prevue__prevue_ping",
+    "mcp__plugin_prevue_prevue__prevue_register_design",
+    "mcp__plugin_prevue_prevue__prevue_validate_spec"
+  ],
+  "mcp_servers": [
+    {
+      "name": "plugin:prevue:prevue",
+      "status": "connected",
+      "source": "plugin"
+    }
+  ],
+  "session_start": {
+    "status": "APPROVED",
+    "revision": 1,
+    "hash12": "d4fe8175385f",
+    "context": "Prevue gate: APPROVED for design revision 1 (hash d4fe8175385f)."
+  },
+  "tool_calls": [
+    {
+      "name": "mcp__plugin_prevue_prevue__prevue_validate_spec",
+      "input": {
+        "spec": "{\"schemaVersion\":1,\"screen\":{\"kind\":\"dashboard\",\"name\":\"Live test B\",\"purpose\":\"Harmless design for live verification\"},\"theme\":{\"mode\":\"light\"},\"layout\":{\"main\":{\"children\":[{\"type\":\"text\",\"content\":\"Hello B\"}]}}}"
+      },
+      "result": {
+        "is_error": false,
+        "text": "{\"valid\":true,\"registered\":false,\"approved\":false,\"schemaVersion\":1,\"hash\":\"06810929a9ce75c0fe0dafc4ab8b4ce6f7af3fde6467e9e6d807448a598e800b\",\"stats\":{\"nodes\":1,\"depth\":0},\"spec\":{\"schemaVersion\":1,\"screen\":{\"kind\":\"dashboard\",\"name\":\"Live test B\",\"purpose\":\"Harmless design for live verification\"},\"theme\":{\"mode\":\"light\",\"accent\":\"blue\"},\"layout\":{\"main\":{\"gap\":\"md\",\"padding\":\"md\",\"children\":[{\"type\":\"text\",\"content\":\"Hello B\",\"variant\":\"body\",\"tone\":\"default\"}]}}}}"
+      }
+    },
+    {
+      "name": "mcp__plugin_prevue_prevue__prevue_register_design",
+      "input": {
+        "spec": "{\"schemaVersion\":1,\"screen\":{\"kind\":\"dashboard\",\"name\":\"Live test B\",\"purpose\":\"Harmless design for live verification\"},\"theme\":{\"mode\":\"light\"},\"layout\":{\"main\":{\"children\":[{\"type\":\"text\",\"content\":\"Hello B\"}]}}}"
+      },
+      "result": {
+        "is_error": false,
+        "text": "{\"registered\":true,\"approvedByThisCall\":false,\"outcome\":\"updated\",\"changed\":true,\"revision\":2,\"hash\":\"06810929a9ce75c0fe0dafc4ab8b4ce6f7af3fde6467e9e6d807448a598e800b\",\"status\":\"PENDING\",\"design\":\"written\"}"
+      }
+    }
+  ],
+  "pretool": [
+    {
+      "class": "guard-permit",
+      "reason": null,
+      "stderr": "LiveGuard: permitted (allow-listed tool)\n"
+    },
+    {
+      "class": "silent",
+      "reason": null,
+      "stderr": ""
+    },
+    {
+      "class": "guard-permit",
+      "reason": null,
+      "stderr": "LiveGuard: permitted (allow-listed tool)\n"
+    },
+    {
+      "class": "silent",
+      "reason": null,
+      "stderr": ""
+    }
+  ],
+  "userpromptsubmit": [
+    {
+      "stdout": "",
+      "exit": 0
+    },
+    {
+      "stdout": "",
+      "exit": 0
+    }
+  ],
+  "guard_trace": [
+    {
+      "guard": "permitted",
+      "why": "allow-listed tool",
+      "tool": "mcp__plugin_prevue_prevue__prevue_validate_spec",
+      "input": {
+        "spec": "{\"schemaVersion\":1,\"screen\":{\"kind\":\"dashboard\",\"name\":\"Live test B\",\"purpose\":\"Harmless design for live verification\"},\"theme\":{\"mode\":\"light\"},\"layout\":{\"main\":{\"children\":[{\"type\":\"text\",\"content\":\"Hello B\"}]}}}"
+      }
+    },
+    {
+      "guard": "permitted",
+      "why": "allow-listed tool",
+      "tool": "mcp__plugin_prevue_prevue__prevue_register_design",
+      "input": {
+        "spec": "{\"schemaVersion\":1,\"screen\":{\"kind\":\"dashboard\",\"name\":\"Live test B\",\"purpose\":\"Harmless design for live verification\"},\"theme\":{\"mode\":\"light\"},\"layout\":{\"main\":{\"children\":[{\"type\":\"text\",\"content\":\"Hello B\"}]}}}"
+      }
+    }
+  ]
+}

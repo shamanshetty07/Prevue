@@ -9,7 +9,7 @@ Prevue lets the developer review and approve a UI design before it is implemente
 
 ## Current status (Phase 1c)
 
-- Prevue tools: `prevue_ping` (health check), `prevue_validate_spec` (checks a UI specification; changes nothing) and `prevue_register_design` (stores a validated specification as the current revision and leaves it PENDING; it never approves). **There is no preview tool yet.** Never tell the developer a preview exists or was shown, and never say a design was registered unless a registration result said `registered: true`.
+- Prevue tools: `prevue_ping` (health check), `prevue_validate_spec` (checks a UI specification; changes nothing) and `prevue_register_design` (stores a validated specification as the current revision and leaves it PENDING; it never approves). **You have no preview tool.** The developer can open a read-only browser preview themselves by running `prevue preview` (`node <plugin>/server/dist/src/cli.js preview`); you cannot run it while no design is approved. Never tell the developer a preview was shown to them, and never say a design was registered unless a registration result said `registered: true`.
 - Prevue starts every session in a PENDING state. While no design is approved, hooks block file edits, writing shell commands, and every tool they cannot classify as read-only; the one exception that changes state is `prevue_register_design`, so you can propose designs. Only the developer can approve, by typing `prevue approve <hash>`. You can never approve a design, and you must not try to touch Prevue's state.
 - If a tool call is denied with a "Prevue:" message, stop and relay it to the developer. Do not look for another route to write the files.
 
@@ -17,11 +17,11 @@ Prevue lets the developer review and approve a UI design before it is implemente
 
 ## Validation, registration, preview, approval
 
-These are four separate steps. Validation, registration and approval exist; preview does not.
+These are four separate steps. Validation, registration and approval exist; the preview is a developer-run viewer.
 
 1. **Validation** (available): `prevue_validate_spec` returns the normalized spec and its hash, or issues. It registers, stores and approves nothing.
 2. **Registration** (available, see below): validates again, stores the normalized (canonical) spec under its hash, and records it as a new PENDING revision, which revokes any earlier approval. Registering an identical design is a no-op. Registration never approves.
-3. **Preview** (not available yet): will show the registered design in the browser.
+3. **Preview** (developer-run, read-only): `prevue preview` shows the current registered design in the browser. It cannot register or approve.
 4. **Approval** (developer only): the developer types `prevue approve <hash>` for the revision they reviewed.
 
 ## The specification format (schemaVersion 1)
@@ -93,7 +93,7 @@ The hash is of the normalized spec (defaults filled in, text trimmed), so reorde
 
 1. Clarify the UI requirements. Ask only about what you cannot reasonably infer.
 2. Write the design as a specification in the format above (layout regions, components, sample data, theme), and check it with `prevue_validate_spec`. Fix every issue it reports.
-3. Show the spec to the developer. Say plainly that it passed validation (not registered unless a registration result said so, not previewed, not approved) and that only a text spec is available. Register it with `prevue_register_design`, report the returned `revision` and `hash`, and ask the developer to review it and approve that exact hash by typing `prevue approve <first 12 characters>`.
+3. Show the spec to the developer. Say plainly that it passed validation (not registered unless a registration result said so, not approved) and that the developer can view the registered design with `prevue preview`. Register it with `prevue_register_design`, report the returned `revision` and `hash`, and ask the developer to review it and approve that exact hash by typing `prevue approve <first 12 characters>`.
 4. Revise the spec on feedback. Each revision is a new design that needs registration and fresh approval.
 5. Implement only after the developer has approved the current design. Treat approval as given only if the developer said so in this conversation about this version of the design, or a Prevue message reports it. Do not infer approval from silence or from an earlier version.
 

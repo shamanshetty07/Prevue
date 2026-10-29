@@ -1,6 +1,6 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
-import { LIMITS } from "./spec/schema.js";
+import { LIMITS, type UiSpec } from "./spec/schema.js";
 import { parseSpecText } from "./spec/validate.js";
 import { paths, type GateState } from "./state.js";
 
@@ -19,6 +19,16 @@ export const verifyStoredDesign = (dataDir: string, projectDir: string, state: G
 
 /** Verifies `designs/<hash>.json` against `hash` alone (used by the gate through the state, and by registration before it reuses a file). */
 export function verifyDesignFile(dataDir: string, projectDir: string, hash: string | null): DesignCheck {
+  const r = readDesignFile(dataDir, projectDir, hash);
+  return r.ok ? { ok: true } : r;
+}
+
+/**
+ * The single reader behind verification and the read-only preview: returns the normalized specification only if the file
+ * passed every check above. The returned spec is the validated parse of the bytes that were read, so it is the exact design
+ * that hashes to `hash`, not a second read of the file.
+ */
+export function readDesignFile(dataDir: string, projectDir: string, hash: string | null): { ok: true; spec: UiSpec } | { ok: false; code: DesignFailure } {
   if (typeof hash !== "string" || !/^[0-9a-f]{64}$/.test(hash)) return { ok: false, code: "design_invalid" };
   const dir = join(paths(dataDir, projectDir).dir, "designs");
   const file = join(dir, `${hash}.json`);
@@ -50,7 +60,7 @@ export function verifyDesignFile(dataDir: string, projectDir: string, hash: stri
     }
     const r = parseSpecText(text);
     if (!r.ok) return { ok: false, code: "design_invalid" };
-    return r.hash === hash ? { ok: true } : { ok: false, code: "design_hash_mismatch" };
+    return r.hash === hash ? { ok: true, spec: r.spec } : { ok: false, code: "design_hash_mismatch" };
   } catch {
     return { ok: false, code: "design_unreadable" };
   } finally {

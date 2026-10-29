@@ -6,3 +6,5 @@ experiments/work/
 .DS_Store
 experiments/results/*.jsonl
 experiments/results/*.err
+preview/dist/
+preview/.test-build/
